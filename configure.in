@@ -1,0 +1,13 @@
+AC_INIT([Yaml.cmod], [0.1], [Pontus Östlund])
+AC_MODULE_INIT()
+AC_CONFIG_HEADERS(config.h)
+#AC_ARG_WITH(yaml,     [  --without-yaml       Support for Parser.Yaml],[],[with_yaml=yes])
+
+CMOD_LIBS="-lyaml"
+CMOD_CFLAGS=""
+
+AC_CHECK_HEADERS([yaml.h])
+
+AC_SUBST(CMOD_CFLAGS)
+AC_SUBST(CMOD_LIBS)
+AC_OUTPUT(Makefile)

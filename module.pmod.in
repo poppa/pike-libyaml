@@ -1,0 +1,28 @@
+/* Parser.Yaml
+ *
+ * Copyright (C) 2017 Pontus Östlund
+ *
+ * Mozilla Public License Version 2.0
+ */
+
+#pike __REAL_VERSION__
+
+#require constant(Parser@module@)
+
+//! @ignore
+inherit Parser@module@;
+//! @endignore
+
+// protected class Base {
+//   inherit _Base;
+// }
+
+//! Yaml parser class
+class YParser {
+  inherit _Parser;
+}
+
+// //! Yaml scanner class
+// class Scanner {
+//   inherit Base;
+// }

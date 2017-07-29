@@ -1,0 +1,734 @@
+/* Parser.Yaml
+ *
+ * Copyright (C) 2017  Pontus Östlund
+ *
+ * Mozilla Public License Version 2.0
+ */
+
+#include "global.h"
+#include "interpret.h"
+#include "module.h"
+#include "object.h"
+#include "stralloc.h"
+#include "mapping.h"
+#include "pike_compiler.h"
+#include "array.h"
+#include "builtin_functions.h"
+#include "svalue.h"
+#include "pike_types.h"
+#include "module_support.h"
+#include "las.h"
+
+#undef PACKAGE_BUGREPORT
+#undef PACKAGE_NAME
+#undef PACKAGE_STRING
+#undef PACKAGE_TARNAME
+#undef PACKAGE_URL
+#undef PACKAGE_VERSION
+
+#include <yaml.h>
+#include "config.h"
+
+DECLARATIONS
+
+#define YAML_DEBUG
+
+#ifdef YAML_DEBUG
+// FIXME: Fix this...
+# define TRACE(X...)                                      \
+	do {                                                    \
+		char s[1000];                                         \
+    sprintf (s, X);                                       \
+		printf("%s:%d: %s",__FILE__,__LINE__,s);              \
+	} while (0)
+#else
+# define TRACE(X...)0
+#endif
+
+// Push text if X is not NULL, push int otherwise
+#define P_TEXT(X) do {           \
+  if ((X) == NULL) push_int (0); \
+  else push_text ((X));          \
+} while (0)
+
+
+/*! @module Parser
+*/
+/*! @module Yaml
+*/
+
+/*! @decl string(8bit) get_version_string()
+ *!
+ *! Returns the @tt{libyaml@} version as a string
+ */
+PIKEFUN string get_version_string ()
+{
+  push_text (yaml_get_version_string ());
+  return;
+}
+
+/*! @decl mapping(string(8bit):int) get_version()
+ *!
+ *! Returns the @tt{libyaml@} version as a mapping
+ *!
+ *! @returns
+ *!  @mapping
+ *!   @member int "major"
+ *!   @member int "minor"
+ *!   @member int "patch"
+ *!  @endmapping
+ */
+PIKEFUN mapping(string:int) get_version ()
+{
+  int a, b, c;
+  yaml_get_version (&a, &b, &c);
+
+  push_constant_text ("major"); push_int (a);
+  push_constant_text ("minor"); push_int (b);
+  push_constant_text ("patch"); push_int (c);
+
+  f_aggregate_mapping (6);
+
+  return;
+}
+
+
+#define YAML_EXIT_PARSER()              \
+	do {                                  \
+		yaml_parser_delete (&THIS->parser); \
+		if (THIS->fh != NULL) {             \
+			fclose (THIS->fh);                \
+			THIS->fh = NULL;                  \
+		}                                   \
+	} while (0)
+
+#define YAML_EXIT_PARENT_PARSER()       \
+	do {                                  \
+		yaml_parser_delete (&PARENT->parser); \
+		if (PARENT->fh != NULL) {             \
+			fclose (PARENT->fh);                \
+			PARENT->fh = NULL;                  \
+		}                                   \
+	} while (0)
+
+
+#define YAML_ERR(ERR...)                    \
+	do {                                      \
+		YAML_EXIT_PARSER();                     \
+		Pike_error (ERR);                       \
+	} while (0)
+
+
+#define PARSER_ERROR(P)                                   \
+	do {                                                    \
+	  Pike_error("Parser error (%d): %s at offset %d in ",  \
+	             P.error, P.problem, P.problem_offset);     \
+	} while (0)
+
+
+#define CHECK_NO_INPUT()                                  \
+	do {                                                    \
+		if (THIS->has_input) {                                \
+			YAML_ERR("This instance already has input set!\n"); \
+		}                                                     \
+	} while (0)
+
+
+typedef struct {
+	struct Yaml_cq__Base_program *base;
+} YAML_BASE_OBJECT_DATA;
+
+
+/*! @class _Base
+ *! @appears Parser.Yaml.Base
+ *!
+ *! Base class both the emitter and parser are inheriting
+ */
+PIKECLASS _Base
+	flags ID_PROTECTED;
+{
+	CVAR yaml_parser_t parser;
+	CVAR FILE *fh;
+
+	/*! @decl protected bool has_input;
+	 *!  Set to true when either @[set_input_string()] or @[set_input_file()]
+	 *!  is called.
+	 */
+	PIKEVAR int(0..1) has_input
+		flags ID_PROTECTED;
+
+	PIKEVAR string(8bit) input_str
+		flags ID_PROTECTED;
+
+  /*! @decl void set_encoding(int encoding)
+   *!
+   *! Encoding can be any of of the constants @[ANY_ENCODING], @[UTF8_ENCODING],
+   *! @[UTF16LE_ENCODING] or @[UTF16BE_ENCODING]
+   */
+  PIKEFUN void set_encoding (int encoding)
+  {
+    yaml_parser_set_encoding (&THIS->parser, encoding);
+    // pop_n_elems (args);
+  }
+
+  /*! @decl void set_input_string(string(8bit) input)
+   *!
+   *! @param input
+   *!  The YAML string to parse/scan
+   */
+  PIKEFUN void set_input_string (string(8bit) input)
+  {
+  	CHECK_NO_INPUT();
+
+    int len;
+    len = strlen (input->str);
+    THIS->input_str = input;
+
+    if (THIS->input_str == NULL) {
+      YAML_ERR("YAML: Out of memory!\n");
+    }
+
+    yaml_parser_set_input_string (&THIS->parser,
+                                  (const unsigned char *) THIS->input_str->str,
+                                  len);
+    THIS->has_input = 1;
+    // pop_n_elems (args);
+  }
+
+  /*! @decl void set_input_file (string(8bit) file)
+   *!
+   *! @param file
+   *!  The YAML file to parse/scan
+   */
+  PIKEFUN void set_input_file (string file)
+  {
+  	CHECK_NO_INPUT();
+
+    THIS->fh = fopen (file->str, "r");
+
+    if (THIS->fh == NULL) {
+    	YAML_ERR ("Unable to open file \"%s\"\n", file->str);
+    }
+
+    yaml_parser_set_input_file (&THIS->parser, THIS->fh);
+
+    THIS->has_input = 1;
+  }
+
+
+	INIT {
+		TRACE(">>> INIT _Base\n");
+		THIS->has_input = 0;
+		THIS->input_str = NULL;
+
+		memset (&THIS->parser, 0, sizeof (THIS->parser));
+
+    if (!yaml_parser_initialize (&THIS->parser)) {
+      Pike_error ("Error initializing parser!\n");
+      return;
+    }
+	}
+
+	EXIT {
+		YAML_EXIT_PARSER();
+		TRACE("<<< EXIT _Base\n");
+	}
+}
+/*! @endclass */
+
+#define PARENT THIS_YAML_CQ__BASE
+
+/*! @class Parser
+ *! @appears Parser.Yaml.Parser
+ *! @inherit Parser.Yaml.Base
+ *!
+ *! Main parser class
+*/
+PIKECLASS _Parser
+	// flags ID_PROTECTED;
+	// program_flags PROGRAM_USES_PARENT|PROGRAM_NEEDS_PARENT;
+{
+	INHERIT Yaml_cq__Base;
+
+	CVAR yaml_event_t event;
+
+  /*! @decl int parse()
+   *!
+   *! Move parser to next event
+   *!
+   *! @returns
+   *!  Returns the event type
+   */
+  PIKEFUN int parse ()
+  {
+    yaml_event_t _event;
+
+    yaml_event_delete (&THIS->event);
+
+    if (!PARENT->has_input) {
+      Pike_error ("No input given to object. Set via \"set_input_file()\" "
+                  "or \"set_input_string()\"\n");
+    }
+
+    TRACE("Input: %s\n", THIS->input_str->str);
+
+    if (!yaml_parser_parse (&PARENT->parser, &_event)) {
+    	TRACE(">>>> ERR\n");
+  		yaml_event_delete (&THIS->event);
+  		Pike_error("Parser error (%d): %s at offset %d in ",
+	             PARENT->parser.error, PARENT->parser.problem, PARENT->parser.problem_offset);
+      // PARSER_ERROR (PARENT->parser);
+      // Pike_error ("YAML Parser Error!\n");
+    }
+
+    THIS->event = _event;
+
+    RETURN (_event.type);
+  }
+
+	INIT {
+		TRACE(">>> INIT _Parser()\n");
+		memset (&THIS->event,  0, sizeof (THIS->event));
+	}
+
+	EXIT {
+		yaml_event_delete (&THIS->event);
+		TRACE("<<< EXIT _Parser()\n");
+	}
+}
+/*! @endclass */
+
+PIKE_MODULE_INIT
+{
+	TRACE(">>> INIT Yaml\n");
+
+	add_string_constant("__author", PACKAGE_BUGREPORT, 0);
+	add_string_constant("__version", PACKAGE_VERSION, 0);
+
+	/*
+		These constants are automatically generated from tools/make-enums.pike
+	*/
+
+	/* Constants from `yaml_encoding` */
+
+  /*! @decl constant ANY_ENCODING */
+  add_integer_constant ("ANY_ENCODING",
+                        YAML_ANY_ENCODING, 0);
+  /*! @decl constant UTF16BE_ENCODING */
+  add_integer_constant ("UTF16BE_ENCODING",
+                        YAML_UTF16BE_ENCODING, 0);
+  /*! @decl constant UTF16LE_ENCODING */
+  add_integer_constant ("UTF16LE_ENCODING",
+                        YAML_UTF16LE_ENCODING, 0);
+  /*! @decl constant UTF8_ENCODING */
+  add_integer_constant ("UTF8_ENCODING",
+                        YAML_UTF8_ENCODING, 0);
+
+  /* Constants from `yaml_break` */
+
+  /*! @decl constant ANY_BREAK */
+  add_integer_constant ("ANY_BREAK",
+                        YAML_ANY_BREAK, 0);
+  /*! @decl constant CRLN_BREAK */
+  add_integer_constant ("CRLN_BREAK",
+                        YAML_CRLN_BREAK, 0);
+  /*! @decl constant CR_BREAK */
+  add_integer_constant ("CR_BREAK",
+                        YAML_CR_BREAK, 0);
+  /*! @decl constant LN_BREAK */
+  add_integer_constant ("LN_BREAK",
+                        YAML_LN_BREAK, 0);
+
+  /* Constants from `yaml_error_type` */
+
+  /*! @decl constant COMPOSER_ERROR */
+  add_integer_constant ("COMPOSER_ERROR",
+                        YAML_COMPOSER_ERROR, 0);
+  /*! @decl constant EMITTER_ERROR */
+  add_integer_constant ("EMITTER_ERROR",
+                        YAML_EMITTER_ERROR, 0);
+  /*! @decl constant MEMORY_ERROR */
+  add_integer_constant ("MEMORY_ERROR",
+                        YAML_MEMORY_ERROR, 0);
+  /*! @decl constant NO_ERROR */
+  add_integer_constant ("NO_ERROR",
+                        YAML_NO_ERROR, 0);
+  /*! @decl constant PARSER_ERROR */
+  add_integer_constant ("PARSER_ERROR",
+                        YAML_PARSER_ERROR, 0);
+  /*! @decl constant READER_ERROR */
+  add_integer_constant ("READER_ERROR",
+                        YAML_READER_ERROR, 0);
+  /*! @decl constant SCANNER_ERROR */
+  add_integer_constant ("SCANNER_ERROR",
+                        YAML_SCANNER_ERROR, 0);
+  /*! @decl constant WRITER_ERROR */
+  add_integer_constant ("WRITER_ERROR",
+                        YAML_WRITER_ERROR, 0);
+
+  /* Constants from `yaml_scalar_style` */
+
+  /*! @decl constant ANY_SCALAR_STYLE */
+  add_integer_constant ("ANY_SCALAR_STYLE",
+                        YAML_ANY_SCALAR_STYLE, 0);
+  /*! @decl constant DOUBLE_QUOTED_SCALAR_STYLE */
+  add_integer_constant ("DOUBLE_QUOTED_SCALAR_STYLE",
+                        YAML_DOUBLE_QUOTED_SCALAR_STYLE, 0);
+  /*! @decl constant FOLDED_SCALAR_STYLE */
+  add_integer_constant ("FOLDED_SCALAR_STYLE",
+                        YAML_FOLDED_SCALAR_STYLE, 0);
+  /*! @decl constant LITERAL_SCALAR_STYLE */
+  add_integer_constant ("LITERAL_SCALAR_STYLE",
+                        YAML_LITERAL_SCALAR_STYLE, 0);
+  /*! @decl constant PLAIN_SCALAR_STYLE */
+  add_integer_constant ("PLAIN_SCALAR_STYLE",
+                        YAML_PLAIN_SCALAR_STYLE, 0);
+  /*! @decl constant SINGLE_QUOTED_SCALAR_STYLE */
+  add_integer_constant ("SINGLE_QUOTED_SCALAR_STYLE",
+                        YAML_SINGLE_QUOTED_SCALAR_STYLE, 0);
+
+  /* Constants from `yaml_sequence_style` */
+
+  /*! @decl constant ANY_SEQUENCE_STYLE */
+  add_integer_constant ("ANY_SEQUENCE_STYLE",
+                        YAML_ANY_SEQUENCE_STYLE, 0);
+  /*! @decl constant BLOCK_SEQUENCE_STYLE */
+  add_integer_constant ("BLOCK_SEQUENCE_STYLE",
+                        YAML_BLOCK_SEQUENCE_STYLE, 0);
+  /*! @decl constant FLOW_SEQUENCE_STYLE */
+  add_integer_constant ("FLOW_SEQUENCE_STYLE",
+                        YAML_FLOW_SEQUENCE_STYLE, 0);
+
+  /* Constants from `yaml_mapping_style` */
+
+  /*! @decl constant ANY_MAPPING_STYLE */
+  add_integer_constant ("ANY_MAPPING_STYLE",
+                        YAML_ANY_MAPPING_STYLE, 0);
+  /*! @decl constant BLOCK_MAPPING_STYLE */
+  add_integer_constant ("BLOCK_MAPPING_STYLE",
+                        YAML_BLOCK_MAPPING_STYLE, 0);
+  /*! @decl constant FLOW_MAPPING_STYLE */
+  add_integer_constant ("FLOW_MAPPING_STYLE",
+                        YAML_FLOW_MAPPING_STYLE, 0);
+
+  /* Constants from `yaml_token_type` */
+
+  /*! @decl constant ALIAS_TOKEN */
+  add_integer_constant ("ALIAS_TOKEN",
+                        YAML_ALIAS_TOKEN, 0);
+  /*! @decl constant ANCHOR_TOKEN */
+  add_integer_constant ("ANCHOR_TOKEN",
+                        YAML_ANCHOR_TOKEN, 0);
+  /*! @decl constant BLOCK_END_TOKEN */
+  add_integer_constant ("BLOCK_END_TOKEN",
+                        YAML_BLOCK_END_TOKEN, 0);
+  /*! @decl constant BLOCK_ENTRY_TOKEN */
+  add_integer_constant ("BLOCK_ENTRY_TOKEN",
+                        YAML_BLOCK_ENTRY_TOKEN, 0);
+  /*! @decl constant BLOCK_MAPPING_START_TOKEN */
+  add_integer_constant ("BLOCK_MAPPING_START_TOKEN",
+                        YAML_BLOCK_MAPPING_START_TOKEN, 0);
+  /*! @decl constant BLOCK_SEQUENCE_START_TOKEN */
+  add_integer_constant ("BLOCK_SEQUENCE_START_TOKEN",
+                        YAML_BLOCK_SEQUENCE_START_TOKEN, 0);
+  /*! @decl constant DOCUMENT_END_TOKEN */
+  add_integer_constant ("DOCUMENT_END_TOKEN",
+                        YAML_DOCUMENT_END_TOKEN, 0);
+  /*! @decl constant DOCUMENT_START_TOKEN */
+  add_integer_constant ("DOCUMENT_START_TOKEN",
+                        YAML_DOCUMENT_START_TOKEN, 0);
+  /*! @decl constant FLOW_ENTRY_TOKEN */
+  add_integer_constant ("FLOW_ENTRY_TOKEN",
+                        YAML_FLOW_ENTRY_TOKEN, 0);
+  /*! @decl constant FLOW_MAPPING_END_TOKEN */
+  add_integer_constant ("FLOW_MAPPING_END_TOKEN",
+                        YAML_FLOW_MAPPING_END_TOKEN, 0);
+  /*! @decl constant FLOW_MAPPING_START_TOKEN */
+  add_integer_constant ("FLOW_MAPPING_START_TOKEN",
+                        YAML_FLOW_MAPPING_START_TOKEN, 0);
+  /*! @decl constant FLOW_SEQUENCE_END_TOKEN */
+  add_integer_constant ("FLOW_SEQUENCE_END_TOKEN",
+                        YAML_FLOW_SEQUENCE_END_TOKEN, 0);
+  /*! @decl constant FLOW_SEQUENCE_START_TOKEN */
+  add_integer_constant ("FLOW_SEQUENCE_START_TOKEN",
+                        YAML_FLOW_SEQUENCE_START_TOKEN, 0);
+  /*! @decl constant KEY_TOKEN */
+  add_integer_constant ("KEY_TOKEN",
+                        YAML_KEY_TOKEN, 0);
+  /*! @decl constant NO_TOKEN */
+  add_integer_constant ("NO_TOKEN",
+                        YAML_NO_TOKEN, 0);
+  /*! @decl constant SCALAR_TOKEN */
+  add_integer_constant ("SCALAR_TOKEN",
+                        YAML_SCALAR_TOKEN, 0);
+  /*! @decl constant STREAM_END_TOKEN */
+  add_integer_constant ("STREAM_END_TOKEN",
+                        YAML_STREAM_END_TOKEN, 0);
+  /*! @decl constant STREAM_START_TOKEN */
+  add_integer_constant ("STREAM_START_TOKEN",
+                        YAML_STREAM_START_TOKEN, 0);
+  /*! @decl constant TAG_DIRECTIVE_TOKEN */
+  add_integer_constant ("TAG_DIRECTIVE_TOKEN",
+                        YAML_TAG_DIRECTIVE_TOKEN, 0);
+  /*! @decl constant TAG_TOKEN */
+  add_integer_constant ("TAG_TOKEN",
+                        YAML_TAG_TOKEN, 0);
+  /*! @decl constant VALUE_TOKEN */
+  add_integer_constant ("VALUE_TOKEN",
+                        YAML_VALUE_TOKEN, 0);
+  /*! @decl constant VERSION_DIRECTIVE_TOKEN */
+  add_integer_constant ("VERSION_DIRECTIVE_TOKEN",
+                        YAML_VERSION_DIRECTIVE_TOKEN, 0);
+
+  /* Constants from `yaml_event_type` */
+
+  /*! @decl constant ALIAS_EVENT */
+  add_integer_constant ("ALIAS_EVENT",
+                        YAML_ALIAS_EVENT, 0);
+  /*! @decl constant DOCUMENT_END_EVENT */
+  add_integer_constant ("DOCUMENT_END_EVENT",
+                        YAML_DOCUMENT_END_EVENT, 0);
+  /*! @decl constant DOCUMENT_START_EVENT */
+  add_integer_constant ("DOCUMENT_START_EVENT",
+                        YAML_DOCUMENT_START_EVENT, 0);
+  /*! @decl constant MAPPING_END_EVENT */
+  add_integer_constant ("MAPPING_END_EVENT",
+                        YAML_MAPPING_END_EVENT, 0);
+  /*! @decl constant MAPPING_START_EVENT */
+  add_integer_constant ("MAPPING_START_EVENT",
+                        YAML_MAPPING_START_EVENT, 0);
+  /*! @decl constant NO_EVENT */
+  add_integer_constant ("NO_EVENT",
+                        YAML_NO_EVENT, 0);
+  /*! @decl constant SCALAR_EVENT */
+  add_integer_constant ("SCALAR_EVENT",
+                        YAML_SCALAR_EVENT, 0);
+  /*! @decl constant SEQUENCE_END_EVENT */
+  add_integer_constant ("SEQUENCE_END_EVENT",
+                        YAML_SEQUENCE_END_EVENT, 0);
+  /*! @decl constant SEQUENCE_START_EVENT */
+  add_integer_constant ("SEQUENCE_START_EVENT",
+                        YAML_SEQUENCE_START_EVENT, 0);
+  /*! @decl constant STREAM_END_EVENT */
+  add_integer_constant ("STREAM_END_EVENT",
+                        YAML_STREAM_END_EVENT, 0);
+  /*! @decl constant STREAM_START_EVENT */
+  add_integer_constant ("STREAM_START_EVENT",
+                        YAML_STREAM_START_EVENT, 0);
+
+  /* Constants from `yaml_node_type` */
+
+  /*! @decl constant MAPPING_NODE */
+  add_integer_constant ("MAPPING_NODE",
+                        YAML_MAPPING_NODE, 0);
+  /*! @decl constant NO_NODE */
+  add_integer_constant ("NO_NODE",
+                        YAML_NO_NODE, 0);
+  /*! @decl constant SCALAR_NODE */
+  add_integer_constant ("SCALAR_NODE",
+                        YAML_SCALAR_NODE, 0);
+  /*! @decl constant SEQUENCE_NODE */
+  add_integer_constant ("SEQUENCE_NODE",
+                        YAML_SEQUENCE_NODE, 0);
+
+  /* Constants from `yaml_parser_state` */
+
+  /*! @decl constant PARSE_BLOCK_MAPPING_FIRST_KEY_STATE */
+  add_integer_constant ("PARSE_BLOCK_MAPPING_FIRST_KEY_STATE",
+                        YAML_PARSE_BLOCK_MAPPING_FIRST_KEY_STATE, 0);
+  /*! @decl constant PARSE_BLOCK_MAPPING_KEY_STATE */
+  add_integer_constant ("PARSE_BLOCK_MAPPING_KEY_STATE",
+                        YAML_PARSE_BLOCK_MAPPING_KEY_STATE, 0);
+  /*! @decl constant PARSE_BLOCK_MAPPING_VALUE_STATE */
+  add_integer_constant ("PARSE_BLOCK_MAPPING_VALUE_STATE",
+                        YAML_PARSE_BLOCK_MAPPING_VALUE_STATE, 0);
+  /*! @decl constant PARSE_BLOCK_NODE_OR_INDENTLESS_SEQUENCE_STATE */
+  add_integer_constant ("PARSE_BLOCK_NODE_OR_INDENTLESS_SEQUENCE_STATE",
+                        YAML_PARSE_BLOCK_NODE_OR_INDENTLESS_SEQUENCE_STATE, 0);
+  /*! @decl constant PARSE_BLOCK_NODE_STATE */
+  add_integer_constant ("PARSE_BLOCK_NODE_STATE",
+                        YAML_PARSE_BLOCK_NODE_STATE, 0);
+  /*! @decl constant PARSE_BLOCK_SEQUENCE_ENTRY_STATE */
+  add_integer_constant ("PARSE_BLOCK_SEQUENCE_ENTRY_STATE",
+                        YAML_PARSE_BLOCK_SEQUENCE_ENTRY_STATE, 0);
+  /*! @decl constant PARSE_BLOCK_SEQUENCE_FIRST_ENTRY_STATE */
+  add_integer_constant ("PARSE_BLOCK_SEQUENCE_FIRST_ENTRY_STATE",
+                        YAML_PARSE_BLOCK_SEQUENCE_FIRST_ENTRY_STATE, 0);
+  /*! @decl constant PARSE_DOCUMENT_CONTENT_STATE */
+  add_integer_constant ("PARSE_DOCUMENT_CONTENT_STATE",
+                        YAML_PARSE_DOCUMENT_CONTENT_STATE, 0);
+  /*! @decl constant PARSE_DOCUMENT_END_STATE */
+  add_integer_constant ("PARSE_DOCUMENT_END_STATE",
+                        YAML_PARSE_DOCUMENT_END_STATE, 0);
+  /*! @decl constant PARSE_DOCUMENT_START_STATE */
+  add_integer_constant ("PARSE_DOCUMENT_START_STATE",
+                        YAML_PARSE_DOCUMENT_START_STATE, 0);
+  /*! @decl constant PARSE_END_STATE */
+  add_integer_constant ("PARSE_END_STATE",
+                        YAML_PARSE_END_STATE, 0);
+  /*! @decl constant PARSE_FLOW_MAPPING_EMPTY_VALUE_STATE */
+  add_integer_constant ("PARSE_FLOW_MAPPING_EMPTY_VALUE_STATE",
+                        YAML_PARSE_FLOW_MAPPING_EMPTY_VALUE_STATE, 0);
+  /*! @decl constant PARSE_FLOW_MAPPING_FIRST_KEY_STATE */
+  add_integer_constant ("PARSE_FLOW_MAPPING_FIRST_KEY_STATE",
+                        YAML_PARSE_FLOW_MAPPING_FIRST_KEY_STATE, 0);
+  /*! @decl constant PARSE_FLOW_MAPPING_KEY_STATE */
+  add_integer_constant ("PARSE_FLOW_MAPPING_KEY_STATE",
+                        YAML_PARSE_FLOW_MAPPING_KEY_STATE, 0);
+  /*! @decl constant PARSE_FLOW_MAPPING_VALUE_STATE */
+  add_integer_constant ("PARSE_FLOW_MAPPING_VALUE_STATE",
+                        YAML_PARSE_FLOW_MAPPING_VALUE_STATE, 0);
+  /*! @decl constant PARSE_FLOW_NODE_STATE */
+  add_integer_constant ("PARSE_FLOW_NODE_STATE",
+                        YAML_PARSE_FLOW_NODE_STATE, 0);
+  /*! @decl constant PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_END_STATE */
+  add_integer_constant ("PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_END_STATE",
+                        YAML_PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_END_STATE, 0);
+  /*! @decl constant PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_KEY_STATE */
+  add_integer_constant ("PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_KEY_STATE",
+                        YAML_PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_KEY_STATE, 0);
+  /*! @decl constant PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_VALUE_STATE */
+  add_integer_constant ("PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_VALUE_STATE",
+                        YAML_PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_VALUE_STATE, 0);
+  /*! @decl constant PARSE_FLOW_SEQUENCE_ENTRY_STATE */
+  add_integer_constant ("PARSE_FLOW_SEQUENCE_ENTRY_STATE",
+                        YAML_PARSE_FLOW_SEQUENCE_ENTRY_STATE, 0);
+  /*! @decl constant PARSE_FLOW_SEQUENCE_FIRST_ENTRY_STATE */
+  add_integer_constant ("PARSE_FLOW_SEQUENCE_FIRST_ENTRY_STATE",
+                        YAML_PARSE_FLOW_SEQUENCE_FIRST_ENTRY_STATE, 0);
+  /*! @decl constant PARSE_IMPLICIT_DOCUMENT_START_STATE */
+  add_integer_constant ("PARSE_IMPLICIT_DOCUMENT_START_STATE",
+                        YAML_PARSE_IMPLICIT_DOCUMENT_START_STATE, 0);
+  /*! @decl constant PARSE_INDENTLESS_SEQUENCE_ENTRY_STATE */
+  add_integer_constant ("PARSE_INDENTLESS_SEQUENCE_ENTRY_STATE",
+                        YAML_PARSE_INDENTLESS_SEQUENCE_ENTRY_STATE, 0);
+  /*! @decl constant PARSE_STREAM_START_STATE */
+  add_integer_constant ("PARSE_STREAM_START_STATE",
+                        YAML_PARSE_STREAM_START_STATE, 0);
+
+  /* Constants from `yaml_emitter_state` */
+
+  /*! @decl constant EMIT_BLOCK_MAPPING_FIRST_KEY_STATE */
+  add_integer_constant ("EMIT_BLOCK_MAPPING_FIRST_KEY_STATE",
+                        YAML_EMIT_BLOCK_MAPPING_FIRST_KEY_STATE, 0);
+  /*! @decl constant EMIT_BLOCK_MAPPING_KEY_STATE */
+  add_integer_constant ("EMIT_BLOCK_MAPPING_KEY_STATE",
+                        YAML_EMIT_BLOCK_MAPPING_KEY_STATE, 0);
+  /*! @decl constant EMIT_BLOCK_MAPPING_SIMPLE_VALUE_STATE */
+  add_integer_constant ("EMIT_BLOCK_MAPPING_SIMPLE_VALUE_STATE",
+                        YAML_EMIT_BLOCK_MAPPING_SIMPLE_VALUE_STATE, 0);
+  /*! @decl constant EMIT_BLOCK_MAPPING_VALUE_STATE */
+  add_integer_constant ("EMIT_BLOCK_MAPPING_VALUE_STATE",
+                        YAML_EMIT_BLOCK_MAPPING_VALUE_STATE, 0);
+  /*! @decl constant EMIT_BLOCK_SEQUENCE_FIRST_ITEM_STATE */
+  add_integer_constant ("EMIT_BLOCK_SEQUENCE_FIRST_ITEM_STATE",
+                        YAML_EMIT_BLOCK_SEQUENCE_FIRST_ITEM_STATE, 0);
+  /*! @decl constant EMIT_BLOCK_SEQUENCE_ITEM_STATE */
+  add_integer_constant ("EMIT_BLOCK_SEQUENCE_ITEM_STATE",
+                        YAML_EMIT_BLOCK_SEQUENCE_ITEM_STATE, 0);
+  /*! @decl constant EMIT_DOCUMENT_CONTENT_STATE */
+  add_integer_constant ("EMIT_DOCUMENT_CONTENT_STATE",
+                        YAML_EMIT_DOCUMENT_CONTENT_STATE, 0);
+  /*! @decl constant EMIT_DOCUMENT_END_STATE */
+  add_integer_constant ("EMIT_DOCUMENT_END_STATE",
+                        YAML_EMIT_DOCUMENT_END_STATE, 0);
+  /*! @decl constant EMIT_DOCUMENT_START_STATE */
+  add_integer_constant ("EMIT_DOCUMENT_START_STATE",
+                        YAML_EMIT_DOCUMENT_START_STATE, 0);
+  /*! @decl constant EMIT_END_STATE */
+  add_integer_constant ("EMIT_END_STATE",
+                        YAML_EMIT_END_STATE, 0);
+  /*! @decl constant EMIT_FIRST_DOCUMENT_START_STATE */
+  add_integer_constant ("EMIT_FIRST_DOCUMENT_START_STATE",
+                        YAML_EMIT_FIRST_DOCUMENT_START_STATE, 0);
+  /*! @decl constant EMIT_FLOW_MAPPING_FIRST_KEY_STATE */
+  add_integer_constant ("EMIT_FLOW_MAPPING_FIRST_KEY_STATE",
+                        YAML_EMIT_FLOW_MAPPING_FIRST_KEY_STATE, 0);
+  /*! @decl constant EMIT_FLOW_MAPPING_KEY_STATE */
+  add_integer_constant ("EMIT_FLOW_MAPPING_KEY_STATE",
+                        YAML_EMIT_FLOW_MAPPING_KEY_STATE, 0);
+  /*! @decl constant EMIT_FLOW_MAPPING_SIMPLE_VALUE_STATE */
+  add_integer_constant ("EMIT_FLOW_MAPPING_SIMPLE_VALUE_STATE",
+                        YAML_EMIT_FLOW_MAPPING_SIMPLE_VALUE_STATE, 0);
+  /*! @decl constant EMIT_FLOW_MAPPING_VALUE_STATE */
+  add_integer_constant ("EMIT_FLOW_MAPPING_VALUE_STATE",
+                        YAML_EMIT_FLOW_MAPPING_VALUE_STATE, 0);
+  /*! @decl constant EMIT_FLOW_SEQUENCE_FIRST_ITEM_STATE */
+  add_integer_constant ("EMIT_FLOW_SEQUENCE_FIRST_ITEM_STATE",
+                        YAML_EMIT_FLOW_SEQUENCE_FIRST_ITEM_STATE, 0);
+  /*! @decl constant EMIT_FLOW_SEQUENCE_ITEM_STATE */
+  add_integer_constant ("EMIT_FLOW_SEQUENCE_ITEM_STATE",
+                        YAML_EMIT_FLOW_SEQUENCE_ITEM_STATE, 0);
+  /*! @decl constant EMIT_STREAM_START_STATE */
+  add_integer_constant ("EMIT_STREAM_START_STATE",
+                        YAML_EMIT_STREAM_START_STATE, 0);
+
+  /*! @decl constant NULL_TAG
+   *! The tag @@c !!null with the only possible value: @@c null.
+  */
+  add_string_constant ("NULL_TAG", YAML_NULL_TAG, 0);
+
+  /*! @decl constant BOOL_TAG
+   *! The tag @@c !!bool with the values: @@c true and @@c falce.
+  */
+  add_string_constant ("BOOL_TAG", YAML_BOOL_TAG, 0);
+
+  /*! @decl constant STR_TAG
+   *! The tag @@c !!str for string values.
+  */
+  add_string_constant ("STR_TAG", YAML_STR_TAG, 0);
+
+  /*! @decl constant INT_TAG
+   *! The tag @@c !!int for integer values.
+  */
+  add_string_constant ("INT_TAG", YAML_INT_TAG, 0);
+
+  /*! @decl constant FLOAT_TAG
+   *! The tag @@c !!float for float values.
+  */
+  add_string_constant ("FLOAT_TAG", YAML_FLOAT_TAG, 0);
+
+  /*! @decl constant TIMESTAMP_TAG
+   *! The tag @@c !!timestamp for date and time values.
+  */
+  add_string_constant ("TIMESTAMP_TAG", YAML_TIMESTAMP_TAG, 0);
+
+  /*! @decl constant SEQ_TAG
+   *! The tag @@c !!seq is used to denote sequences.
+  */
+  add_string_constant ("SEQ_TAG", YAML_SEQ_TAG, 0);
+
+  /*! @decl constant MAP_TAG
+   *! The tag @@c !!map is used to denote mapping.
+  */
+  add_string_constant ("MAP_TAG", YAML_MAP_TAG, 0);
+
+  /*! @decl constant DEFAULT_SCALAR_TAG
+   *! The default scalar tag is @@c !!str.
+  */
+  add_string_constant ("DEFAULT_SCALAR_TAG", YAML_DEFAULT_SCALAR_TAG, 0);
+
+  /*! @decl constant DEFAULT_SEQUENCE_TAG
+   *! The default sequence tag is @@c !!seq.
+  */
+  add_string_constant ("DEFAULT_SEQUENCE_TAG", YAML_DEFAULT_SEQUENCE_TAG, 0);
+
+  /*! @decl constant DEFAULT_MAPPING_TAG
+   *! The default mapping tag is @@c !!map.
+  */
+  add_string_constant ("DEFAULT_MAPPING_TAG", YAML_DEFAULT_MAPPING_TAG, 0);
+
+
+	INIT
+}
+
+PIKE_MODULE_EXIT
+{
+	TRACE("<<< EXIT Yaml\n");
+	EXIT
+}
+
+/*! @endmodule
+*/
+/*! @endmodule
+*/

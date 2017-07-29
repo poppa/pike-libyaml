@@ -1,0 +1,17 @@
+
+#
+# Examples from the Preview section of the YAML specification
+# (http://yaml.org/spec/1.2/#Preview)
+#
+
+# Sequence of scalars
+---
+- Mark McGwire
+- Sammy Sosa
+- Ken Griffey
+
+# Mapping scalars to scalars
+---
+hr:  65    # Home runs
+avg: 0.278 # Batting average
+rbi: 147   # Runs Batted In

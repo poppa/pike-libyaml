@@ -1,0 +1,34 @@
+#!/usr/bin/env pike
+
+import Parser.Yaml;
+
+int main(int argc, array(string) argv)
+{
+  // write("Yaml version string: %s\n", get_version_string());
+  // write("Yaml version mapping: %O\n", get_version());
+
+  YParser p = YParser();
+
+  p->set_input_string("lol:");
+  // p->set_input_file(combine_path(__DIR__, "simple.yml"));
+  // p->set_input_file(combine_path(__DIR__, "simple.yml"));
+
+  int r = p->parse();
+
+  werror("Res: %O\n", r);
+
+  // Parser p = Parser();
+
+  // write("\nThis is \"%O %s\" by \"%s\"\n\n",
+  //       Parser.Yaml.module, __version, __author);
+
+  // foreach (sort(indices(Parser.Yaml)), string k) {
+  //   write( "  * %s : %O\n", k, Parser.Yaml[k]);
+  // }
+
+  // werror("ALIAS_EVENT: %O\n", ALIAS_EVENT);
+  // werror("DOCUMENT_END_EVENT: %O\n", DOCUMENT_END_EVENT);
+  // werror("DOCUMENT_START_EVENT: %O\n", DOCUMENT_START_EVENT);
+  // werror("MAPPING_START_EVENT: %O\n", MAPPING_START_EVENT);
+  // werror("MAPPING_END_EVENT: %O\n", MAPPING_END_EVENT);
+}
