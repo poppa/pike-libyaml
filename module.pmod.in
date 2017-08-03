@@ -13,6 +13,15 @@
 inherit @module@;
 //! @endignore
 
+#define YAML_DEBUG
+
+#ifdef YAML_DEBUG
+# define TRACE(X...)werror("%s:%d: %s",basename(__FILE__),__LINE__,sprintf(X))
+#else
+# define TRACE(X...)0
+#endif
+
+
 //! @decl typedef mapping(string:mixed) EventData
 typedef mapping(string:mixed) EventData;
 
@@ -89,6 +98,22 @@ public mixed decode_file(string(8bit) file, void|mapping(string:function) cb)
 }
 
 
+//! Returns the string representation of the event type in @[e] which can
+//! either be an event from @[Parser.get_event()] or the result from
+//! @[Parser.parse()].
+//!
+//! This is the same as
+//!
+//! @code
+//! Parser.YAML.EVENT_TYPE_TO_STR[event_type]
+//! @endcode
+public string describe_event(EventData|int e)
+{
+  int c = mappingp(e) ? e->type : e;
+  return EVENT_TYPE_TO_STR[c];
+}
+
+
 //! YAML parser class
 class Parser {
   inherit _Parser;
@@ -101,10 +126,11 @@ class Parser {
   //! Add a tag callback
   //!
   //! If @[tag] is set in a scalar value then function @[f] will be called
-  //! with the @[EventData] as argument. If @[f] returns @[UNDEFINED] then
-  //! the function call will be skipped and the default conversion, if such
-  //! exist, will take place. If anything other than @[UNDEFINED] is returned
-  //! that will be set as the scalar value.
+  //! with the @[EventData] as first argument and the actual @[Parser()] object
+  //! as second. If @[f] returns @[UNDEFINED] then the function call will be
+  //! skipped and the default conversion, if such exist, will take place. If
+  //! anything other than @[UNDEFINED] is returned that will be set as the
+  //! scalar value.
   //!
   //! If @[f] is falsy the callback will be removed if it exist.
   //!
@@ -171,12 +197,8 @@ class Parser {
   //!  @[SEQUENCE_END_EVENT], @[SEQUENCE_START_EVENT], @[STREAM_END_EVENT]
   //!  or @[STREAM_START_EVENT] constants.
   //!
-  //!  To get a string representation of the event use the @[EVENT_TYPE_TO_STR]
+  //!  To get a string representation of the event use the @[describe_event()]
   //!  mapping.
-  //!
-  //! @code
-  //! EVENT_TYPE_TO_STR[return_value_from_parse]
-  //! @endcode
   public int parse()
   {
     if (next_event_type) {
@@ -212,6 +234,7 @@ class Parser {
 
     EventData e = ::get_event();
     convert_scalar_type(e);
+
     return e;
   }
 
@@ -227,16 +250,24 @@ class Parser {
     return next_event;
   }
 
+  private bool is_deconstructed = false;
+
   //! Converts the entire document into a Pike data structure.
   //!
   //! @seealso
   //!  @[decode()], @[decode_file()]
   public mixed deconstruct()
   {
+    if (is_deconstructed) {
+      error("deconstruct() can not be called twice.\n");
+    }
+
     EventData e, n;
     mixed out;
     mixed curr;
     array docs;
+
+    is_deconstructed = true;
 
     while (int t = parse()) {
       // werror(">>> %s\n", EVENT_TYPE_TO_STR[t]);
@@ -268,7 +299,10 @@ class Parser {
         case SCALAR_EVENT:
           e = get_event();
 
-          if (arrayp(curr)) {
+          if (!curr) {
+            curr = e->value;
+          }
+          else if (arrayp(curr)) {
             curr += ({ e->value });
           }
           else if (mappingp(curr)) {
@@ -291,9 +325,7 @@ class Parser {
                 break;
             }
           }
-          else if (!curr) {
-            curr = e->value;
-          }
+
           break;
       }
     }
@@ -301,9 +333,9 @@ class Parser {
     return docs || out;
   }
 
-  protected array deconstruct_sequence()
+
+  public array deconstruct_sequence()
   {
-    // werror(">>> deconstruct_sequence()\n");
     EventData e;
     array out = ({});
 
@@ -314,32 +346,49 @@ class Parser {
         break;
       }
 
-      switch (e->type)
-      {
-        case MAPPING_START_EVENT:
-          out += ({ deconstruct_mapping() });
-          break;
+      mixed val = UNDEFINED;
 
-        case SEQUENCE_START_EVENT:
-          out += ({ deconstruct_sequence() });
-          break;
+      if (e->tag && tag_callbacks) {
+        if (function f = tag_callbacks[e->tag]) {
+          val = f(e, this);
+        }
+      }
 
-        case ALIAS_EVENT:
-          out += ({ anchors[e->anchor] });
-          break;
+      if (undefinedp(val)) {
+        switch (e->type)
+        {
+          case MAPPING_START_EVENT:
+            val = deconstruct_mapping();
+            break;
 
-        default:
-          out += ({ e->value });
-          break;
+          case SEQUENCE_START_EVENT:
+            val = deconstruct_sequence();
+            break;
+
+          case ALIAS_EVENT:
+            out += ({ anchors[e->anchor] });
+            break;
+
+          default:
+            val = e->value;
+            break;
+        }
+      }
+
+      if (!undefinedp(val)) {
+        out += ({ val });
+      }
+
+      if (e->anchor) {
+        anchors[e->anchor] = val;
       }
     }
-    // werror("<<< deconstruct_sequence()\n");
+
     return out;
   }
 
-  protected mapping deconstruct_mapping()
+  public mapping deconstruct_mapping()
   {
-    // werror(">>> deconstruct_mapping()\n");
     EventData e, n;
     mapping out = ([]);
 
@@ -352,6 +401,11 @@ class Parser {
 
       if (e->type == SEQUENCE_START_EVENT) {
         e->value = deconstruct_sequence();
+      }
+      else {
+        if (e->value == Val.true || e->value == Val.false) {
+          e->value = e->_raw_value;
+        }
       }
 
       n = peek_event();
@@ -375,8 +429,12 @@ class Parser {
           out[e->value] = n->value;
           break;
       }
+
+      if (n->anchor) {
+        anchors[n->anchor] = out[e->value];
+      }
     }
-    // werror("<<< deconstruct_mapping()\n");
+
     return out;
   }
   //! @ignore
@@ -385,6 +443,8 @@ class Parser {
   //! Convert @tt{value@} in @[e] to it's proper data type
   //!
   //! NOTE: This method has side effects, it changes the value property in @[e].
+  //! It also adds the member @tt{_raw_value@} which contain the original
+  //! value if type conversion occurs.
   protected void convert_scalar_type(EventData e)
   {
     // werror("e (%s): %O\n", EVENT_TYPE_TO_STR[e->type], e);
@@ -396,6 +456,7 @@ class Parser {
     string d = e->value;
     string lcd = lower_case(d);
     mixed val;
+    e->_raw_value = d;
 
     if (IS_NOT_IMPLICIT(e) && e->tag && tag_callbacks) {
       if (function f = tag_callbacks[e->tag]) {
@@ -622,7 +683,7 @@ class Parser {
 
     for (int i = 0, j = len-1; i < len; i++, --j) {
       int c = (int)o[i..i];
-      x += c*pow(8, j);
+      x += c * pow(8, j);
     }
 
     return x;
