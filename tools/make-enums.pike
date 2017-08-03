@@ -9,6 +9,12 @@
 
 constant YAML_H = "/usr/include/yaml.h";
 
+mapping fallback_tags = ([
+  "BINARY_TAG" :
+    Tag("BINARY_TAG", "/** The tag !!binary for base64 encoded binary data."
+                      " Pike special */", "tag:yaml.org,2002:binary")
+]);
+
 int main(int argc, array(string) argv)
 {
   if (!Stdio.exist(YAML_H)) {
@@ -83,22 +89,35 @@ class Enum {
 class Tag {
   string name;
   string comment;
+  string explicit;
 
-  void create(string name, string comment)
+  void create(string name, string comment, void|string explicit)
   {
     this::name = name;
     this::comment = comment;
+    this::explicit = explicit;
   }
 
   string to_def()
   {
+    string val = name;
+
+    if (explicit) {
+      val = "\"" + explicit + "\"";
+    }
+
     string pikename = name - "YAML_";
     sscanf(comment, "/**%*[ ]%s*/", string c);
     c = String.trim_all_whites(c);
-    string s = sprintf("/*! @decl constant %s\n *! %s\n*/\n",
-                     pikename, replace(c, "@", "@@"));
+    string s = sprintf("/*! @decl constant %s\n *! %s\n */\n",
+                     pikename, replace(c, "@c", ""));
     return s + sprintf("add_string_constant (%q, %s, 0);\n",
-                       pikename, name);
+                       pikename, val);
+  }
+
+  string pike_name()
+  {
+    return name - "YAML_";
   }
 
   string _sprintf(int t)
@@ -151,6 +170,14 @@ void parse()
 
   foreach (enums, Enum e) {
     write("%s\n", e->to_def());
+  }
+
+  array(string) tagnames = tags->pike_name();
+
+  foreach (fallback_tags; string key; Tag t) {
+    if (!has_value(tagnames, key)) {
+      tags += ({ t });
+    }
   }
 
   foreach (tags, Tag tag) {

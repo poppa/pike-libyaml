@@ -772,60 +772,65 @@ PIKE_MODULE_INIT
   add_integer_constant ("EMIT_STREAM_START_STATE",
                         YAML_EMIT_STREAM_START_STATE, 0);
 
-  /*! @decl constant NULL_TAG
-   *! The tag @@c !!null with the only possible value: @@c null.
-  */
+/*! @decl constant NULL_TAG
+   *! The tag  !!null with the only possible value:  null.
+   */
   add_string_constant ("NULL_TAG", YAML_NULL_TAG, 0);
 
   /*! @decl constant BOOL_TAG
-   *! The tag @@c !!bool with the values: @@c true and @@c falce.
-  */
+   *! The tag  !!bool with the values:  true and  falce.
+   */
   add_string_constant ("BOOL_TAG", YAML_BOOL_TAG, 0);
 
   /*! @decl constant STR_TAG
-   *! The tag @@c !!str for string values.
-  */
+   *! The tag  !!str for string values.
+   */
   add_string_constant ("STR_TAG", YAML_STR_TAG, 0);
 
   /*! @decl constant INT_TAG
-   *! The tag @@c !!int for integer values.
-  */
+   *! The tag  !!int for integer values.
+   */
   add_string_constant ("INT_TAG", YAML_INT_TAG, 0);
 
   /*! @decl constant FLOAT_TAG
-   *! The tag @@c !!float for float values.
-  */
+   *! The tag  !!float for float values.
+   */
   add_string_constant ("FLOAT_TAG", YAML_FLOAT_TAG, 0);
 
   /*! @decl constant TIMESTAMP_TAG
-   *! The tag @@c !!timestamp for date and time values.
-  */
+   *! The tag  !!timestamp for date and time values.
+   */
   add_string_constant ("TIMESTAMP_TAG", YAML_TIMESTAMP_TAG, 0);
 
   /*! @decl constant SEQ_TAG
-   *! The tag @@c !!seq is used to denote sequences.
-  */
+   *! The tag  !!seq is used to denote sequences.
+   */
   add_string_constant ("SEQ_TAG", YAML_SEQ_TAG, 0);
 
   /*! @decl constant MAP_TAG
-   *! The tag @@c !!map is used to denote mapping.
-  */
+   *! The tag  !!map is used to denote mapping.
+   */
   add_string_constant ("MAP_TAG", YAML_MAP_TAG, 0);
 
   /*! @decl constant DEFAULT_SCALAR_TAG
-   *! The default scalar tag is @@c !!str.
-  */
+   *! The default scalar tag is  !!str.
+   */
   add_string_constant ("DEFAULT_SCALAR_TAG", YAML_DEFAULT_SCALAR_TAG, 0);
 
   /*! @decl constant DEFAULT_SEQUENCE_TAG
-   *! The default sequence tag is @@c !!seq.
-  */
+   *! The default sequence tag is  !!seq.
+   */
   add_string_constant ("DEFAULT_SEQUENCE_TAG", YAML_DEFAULT_SEQUENCE_TAG, 0);
 
   /*! @decl constant DEFAULT_MAPPING_TAG
-   *! The default mapping tag is @@c !!map.
-  */
+   *! The default mapping tag is  !!map.
+   */
   add_string_constant ("DEFAULT_MAPPING_TAG", YAML_DEFAULT_MAPPING_TAG, 0);
+
+  /*! @decl constant BINARY_TAG
+   *! The tag !!binary for base64 encoded binary data. Pike special
+   */
+  add_string_constant ("BINARY_TAG", "tag:yaml.org,2002:binary", 0);
 
 
   INIT

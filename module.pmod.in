@@ -21,6 +21,9 @@ typedef mapping(string:mixed) EventData;
 #define IS_NOT_IMPLICIT(event)                     \
   (!event->quoted_implicit && !event->plain_implicit)
 
+#define IS_NOT_IMPLICIT_AND_TAG_IS(event, tag)     \
+  (IS_NOT_IMPLICIT(event) && SCALAR_TAG_IS(event, tag))
+
 #define IS_NOT_QUOTED(event)                       \
   (event->style == PLAIN_SCALAR_STYLE ||           \
    event->style == ANY_SCALAR_STYLE)
@@ -71,6 +74,22 @@ class Parser {
   private EventData next_event;
   private int next_event_type;
   private mapping anchors = ([]);
+  private mapping(string:function) tag_callbacks = ([]);
+
+  public void add_tag_callback(string tag, function f)
+  {
+    if (f) {
+      tag_callbacks[tag] = f;
+    }
+    else {
+      m_delete(tag_callbacks, tag);
+    }
+  }
+
+  public void set_tag_callbacks(mapping(string:function) callbacks)
+  {
+    tag_callbacks = callbacks;
+  }
 
   //! Move the parser to the next event. If @[peek_event()] has been called
   //! that event type will be returned.
@@ -293,8 +312,8 @@ class Parser {
     // werror("<<< deconstruct_mapping()\n");
     return out;
   }
-
   //! @ignore
+
 
   //! Convert @tt{value@} in @[e] to it's proper data type
   //!
@@ -311,13 +330,46 @@ class Parser {
     string lcd = lower_case(d);
     mixed val;
 
+    if (IS_NOT_IMPLICIT(e) && e->tag && tag_callbacks) {
+      if (function f = tag_callbacks[e->tag]) {
+        if (!zero_type(val = f(e))) {
+          e->value = val;
+          return;
+        }
+      }
+    }
+
     if (SCALAR_IS_QUOTED(e)) {
       // Do nothing, explicit string
+    }
+    else if (IS_NOT_IMPLICIT_AND_TAG_IS(e, STR_TAG)) {
+      // Do nothing, explicit string
+    }
+    else if (IS_NOT_IMPLICIT_AND_TAG_IS(e, NULL_TAG)) {
+      e->value = Val.null;
+    }
+    else if (IS_NOT_IMPLICIT_AND_TAG_IS(e, BOOL_TAG)) {
+      e->value = e->value == "true" ? Val.true : Val.false;
+    }
+    else if (IS_NOT_IMPLICIT_AND_TAG_IS(e, INT_TAG)) {
+      e->value = (int) e->value;
+    }
+    else if (IS_NOT_IMPLICIT_AND_TAG_IS(e, FLOAT_TAG)) {
+      e->value = (float) e->value;
+    }
+    else if (IS_NOT_IMPLICIT_AND_TAG_IS(e, TIMESTAMP_TAG)) {
+      e->value = scalar_is_date(e);
+    }
+    else if (IS_NOT_IMPLICIT_AND_TAG_IS(e, BINARY_TAG)) {
+      e->value = MIME.decode_base64(e->value);
     }
     else if (!zero_type(val = scalar_is_null(e))) {
       e->value = val;
     }
     else if (!zero_type(val = scalar_is_bool(e))) {
+      e->value = val;
+    }
+    else if (!zero_type(val = scalar_is_date(e))) {
       e->value = val;
     }
     else if (!zero_type(val = scalar_is_numeric(e))) {
@@ -327,6 +379,28 @@ class Parser {
     if (e->anchor) {
       anchors[e->anchor] = e->value;
     }
+  }
+
+  protected mixed scalar_is_date(EventData e)
+  {
+    if (!e->value) {
+      return UNDEFINED;
+    }
+
+    if (sscanf (e->value, "%*4d-%*2d-%*2d") == 3) {
+      object r;
+      if (mixed err = catch(r = Calendar.dwim_time(e->value))) {
+        if (err = catch(r = Calendar.dwim_day(e->value))) {
+          return UNDEFINED;
+        }
+      }
+
+      if (r) {
+        return r;
+      }
+    }
+
+    return UNDEFINED;
   }
 
   //!
@@ -370,14 +444,6 @@ class Parser {
 
     string lcv = lower_case(v);
 
-    if (lcv == ".inf") {
-      return Math.inf;
-    }
-
-    if (lcv == ".nan") {
-      return Math.nan;
-    }
-
     string prefix;
 
     if (lcv[0] == '+' || lcv[0] == '-') {
@@ -385,7 +451,19 @@ class Parser {
       lcv = lcv[1..];
     }
 
-    multiset int_range = (< '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' >);
+    if (lcv == ".inf") {
+      if (prefix && prefix == "-") {
+        return -(Math.inf);
+      }
+
+      return Math.inf;
+    }
+
+    if (lcv == ".nan") {
+      return Math.nan;
+    }
+
+    multiset int_range = (< '0','1','2','3','4','5','6','7','8','9' >);
 
     if (!int_range[lcv[0]] && lcv[0] != '.') {
       return UNDEFINED;
@@ -447,7 +525,6 @@ class Parser {
       // number.
       if (sizeof(lcv) > 1 && lcv[0] == '0') {
         if (lcv[1] == 'x') {
-          // error("Unahandled hexadecimal number.\n");
           return hex_to_dec(lcv);
         }
         else {
@@ -488,7 +565,11 @@ class Parser {
   int hex_to_dec(string h)
   {
     string chars = "0123456789abcdef";
-    h = lower_case(h[2..]);
+
+    if (h[0] == '0') {
+      h = lower_case(h[2..]);
+    }
+
     int len = sizeof(h);
     int x;
 
