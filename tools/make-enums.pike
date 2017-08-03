@@ -161,7 +161,7 @@ void parse()
 
   foreach (enums, Enum e) {
     string src = (e->source - "yaml_")[..<2];
-    write("\n// %s\n", src);
+    write("\n//! %s to string conversion\n", upper_case(src));
     write("constant %s_TO_STR = ([\n", upper_case(src));
     foreach (e->members, string s) {
       write("  %s : %[0]q,\n", s - "YAML_");

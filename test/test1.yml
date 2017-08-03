@@ -1,0 +1,7 @@
+name: John Doe
+age: 42
+retired: n
+languages:
+  - Pike
+  - Python
+  - Rust

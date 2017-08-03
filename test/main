@@ -8,13 +8,18 @@ int main(int argc, array(string) argv)
   // write("Yaml version string: %s\n", get_version_string());
   // write("Yaml version mapping: %O\n", get_version());
 
-  YParser p = YParser();
+  // werror("type: %O\n", EVENT_TYPE_TO_STR[2]); exit(0);
 
+  // YParser p = YParser();
   // p->set_input_string("lol:");
   // p->set_input_file(combine_path(__DIR__, "simple.yml"));
-  p->set_input_file(combine_path(__DIR__, "simple.yml"));
+  // p->set_input_file(combine_path(__DIR__, "public.yml"));
 
-  p->deconstruct();
+  // mixed res = p->deconstruct();
+
+  mixed res = decode_file(combine_path(__DIR__, "test1.yml"));
+
+  werror("Got: %O\n", res);
 
   // int r;
   // while (r = p->parse()) {
@@ -38,7 +43,7 @@ int main(int argc, array(string) argv)
   //   }
   // }
 
-  destruct(p);
+  // destruct(p);
 
   werror("End test program\n");
 }

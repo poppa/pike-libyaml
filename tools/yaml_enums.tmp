@@ -354,7 +354,7 @@ add_string_constant ("DEFAULT_MAPPING_TAG", YAML_DEFAULT_MAPPING_TAG, 0);
 // For the .pmod
 
 
-// encoding
+//! ENCODING to string conversion
 constant ENCODING_TO_STR = ([
   ANY_ENCODING : "ANY_ENCODING",
   UTF16BE_ENCODING : "UTF16BE_ENCODING",
@@ -362,7 +362,7 @@ constant ENCODING_TO_STR = ([
   UTF8_ENCODING : "UTF8_ENCODING",
 ]);
 
-// break
+//! BREAK to string conversion
 constant BREAK_TO_STR = ([
   ANY_BREAK : "ANY_BREAK",
   CRLN_BREAK : "CRLN_BREAK",
@@ -370,7 +370,7 @@ constant BREAK_TO_STR = ([
   LN_BREAK : "LN_BREAK",
 ]);
 
-// error_type
+//! ERROR_TYPE to string conversion
 constant ERROR_TYPE_TO_STR = ([
   COMPOSER_ERROR : "COMPOSER_ERROR",
   EMITTER_ERROR : "EMITTER_ERROR",
@@ -382,7 +382,7 @@ constant ERROR_TYPE_TO_STR = ([
   WRITER_ERROR : "WRITER_ERROR",
 ]);
 
-// scalar_style
+//! SCALAR_STYLE to string conversion
 constant SCALAR_STYLE_TO_STR = ([
   ANY_SCALAR_STYLE : "ANY_SCALAR_STYLE",
   DOUBLE_QUOTED_SCALAR_STYLE : "DOUBLE_QUOTED_SCALAR_STYLE",
@@ -392,21 +392,21 @@ constant SCALAR_STYLE_TO_STR = ([
   SINGLE_QUOTED_SCALAR_STYLE : "SINGLE_QUOTED_SCALAR_STYLE",
 ]);
 
-// sequence_style
+//! SEQUENCE_STYLE to string conversion
 constant SEQUENCE_STYLE_TO_STR = ([
   ANY_SEQUENCE_STYLE : "ANY_SEQUENCE_STYLE",
   BLOCK_SEQUENCE_STYLE : "BLOCK_SEQUENCE_STYLE",
   FLOW_SEQUENCE_STYLE : "FLOW_SEQUENCE_STYLE",
 ]);
 
-// mapping_style
+//! MAPPING_STYLE to string conversion
 constant MAPPING_STYLE_TO_STR = ([
   ANY_MAPPING_STYLE : "ANY_MAPPING_STYLE",
   BLOCK_MAPPING_STYLE : "BLOCK_MAPPING_STYLE",
   FLOW_MAPPING_STYLE : "FLOW_MAPPING_STYLE",
 ]);
 
-// token_type
+//! TOKEN_TYPE to string conversion
 constant TOKEN_TYPE_TO_STR = ([
   ALIAS_TOKEN : "ALIAS_TOKEN",
   ANCHOR_TOKEN : "ANCHOR_TOKEN",
@@ -432,7 +432,7 @@ constant TOKEN_TYPE_TO_STR = ([
   VERSION_DIRECTIVE_TOKEN : "VERSION_DIRECTIVE_TOKEN",
 ]);
 
-// event_type
+//! EVENT_TYPE to string conversion
 constant EVENT_TYPE_TO_STR = ([
   ALIAS_EVENT : "ALIAS_EVENT",
   DOCUMENT_END_EVENT : "DOCUMENT_END_EVENT",
@@ -447,7 +447,7 @@ constant EVENT_TYPE_TO_STR = ([
   STREAM_START_EVENT : "STREAM_START_EVENT",
 ]);
 
-// node_type
+//! NODE_TYPE to string conversion
 constant NODE_TYPE_TO_STR = ([
   MAPPING_NODE : "MAPPING_NODE",
   NO_NODE : "NO_NODE",
@@ -455,7 +455,7 @@ constant NODE_TYPE_TO_STR = ([
   SEQUENCE_NODE : "SEQUENCE_NODE",
 ]);
 
-// parser_state
+//! PARSER_STATE to string conversion
 constant PARSER_STATE_TO_STR = ([
   PARSE_BLOCK_MAPPING_FIRST_KEY_STATE : "PARSE_BLOCK_MAPPING_FIRST_KEY_STATE",
   PARSE_BLOCK_MAPPING_KEY_STATE : "PARSE_BLOCK_MAPPING_KEY_STATE",
@@ -483,7 +483,7 @@ constant PARSER_STATE_TO_STR = ([
   PARSE_STREAM_START_STATE : "PARSE_STREAM_START_STATE",
 ]);
 
-// emitter_state
+//! EMITTER_STATE to string conversion
 constant EMITTER_STATE_TO_STR = ([
   EMIT_BLOCK_MAPPING_FIRST_KEY_STATE : "EMIT_BLOCK_MAPPING_FIRST_KEY_STATE",
   EMIT_BLOCK_MAPPING_KEY_STATE : "EMIT_BLOCK_MAPPING_KEY_STATE",
