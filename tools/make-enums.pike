@@ -58,17 +58,17 @@ class Enum {
     foreach (sort(members), string m) {
       string pikename = m - "YAML_";
       string tmp = sprintf("/*! @decl constant %s */\n", pikename);
-      tmp += sprintf("add_integer_constant (%q, %s, 0);\n",
-                     pikename, m);
+      string tmp2 = sprintf("add_integer_constant (%q, %s, 0);\n",
+                            pikename, m);
 
-      if (sizeof(tmp) > 78) {
+      if (sizeof(tmp2) > 78) {
         tmp = sprintf("/*! @decl constant %s */\n", pikename);
-        tmp += sprintf("add_integer_constant (%q,\n"
+        tmp2 = sprintf("add_integer_constant (%q,\n"
                        "                      %s, 0);\n",
                        pikename, m);
       }
 
-      s += tmp;
+      s += tmp + tmp2;
     }
 
     return s;
@@ -156,4 +156,18 @@ void parse()
   foreach (tags, Tag tag) {
     write("%s\n", tag->to_def());
   }
+
+  write("\n\n// For the .pmod\n\n");
+
+  foreach (enums, Enum e) {
+    string src = (e->source - "yaml_")[..<2];
+    write("\n// %s\n", src);
+    write("constant %s_TO_STR = ([\n", upper_case(src));
+    foreach (e->members, string s) {
+      write("  %s : %[0]q,\n", s - "YAML_");
+    }
+    write("]);\n");
+  }
+
+
 }

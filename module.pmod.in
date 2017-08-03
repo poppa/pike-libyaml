@@ -11,18 +11,418 @@
 
 //! @ignore
 inherit Parser@module@;
+
+typedef mapping(string:mixed) EventData;
 //! @endignore
 
-// protected class Base {
-//   inherit _Base;
-// }
+#define SCALAR_TAG_IS(event, what) (event->tag == what)
+
+#define IS_NOT_IMPLICIT(event)                     \
+  (!event->quoted_implicit && !event->plain_implicit)
+
+#define IS_NOT_QUOTED(event)                       \
+  (event->style == PLAIN_SCALAR_STYLE ||           \
+   event->style == ANY_SCALAR_STYLE)
+
+#define SCALAR_IS_QUOTED(event)                    \
+  (event->style == SINGLE_QUOTED_SCALAR_STYLE ||   \
+   event->style == DOUBLE_QUOTED_SCALAR_STYLE)
+
+
+//! Convert @tt{value@} in @[e] to it's proper data type
+//! NOTE: Has side effects.
+protected void convert_scalar_type(EventData e)
+{
+  if (e->type != SCALAR_EVENT) {
+    return;
+  }
+
+  string d = e->value;
+  string lcd = lower_case(d);
+  mixed val;
+
+  if (SCALAR_IS_QUOTED(e)) {
+    // Do nothing, explicit string
+  }
+  else if (!zero_type(val = scalar_is_null(e))) {
+    e->value = val;
+  }
+  else if (!zero_type(val = scalar_is_bool(e))) {
+    e->value = val;
+  }
+  else if (!zero_type(val = scalar_is_numeric(e))) {
+    e->value = val;
+  }
+}
+
+//! Check if the scalar value in @[e] is a @tt{null} value.
+protected Val.Null scalar_is_null(EventData e)
+{
+  if (e->quoted_implicit) {
+    return UNDEFINED;
+  }
+
+  if (e->plain_implicit && (< "~", "null" >)[lower_case(e->value)]) {
+    return Val.null;
+  }
+
+  return e->value == NULL_TAG ? Val.null : UNDEFINED;
+}
+
+//!
+protected Val.Boolean scalar_is_bool(EventData e)
+{
+  if (SCALAR_TAG_IS(e, BOOL_TAG) || IS_NOT_QUOTED(e)) {
+    if ((< "y", "yes", "true", "on" >)[lower_case(e->value)]) {
+      return Val.true;
+    }
+
+    if ((< "n", "no", "false", "off" >)[lower_case(e->value)]) {
+      return Val.false;
+    }
+  }
+
+  return UNDEFINED;
+}
+
+
+protected mixed scalar_is_numeric(EventData e)
+{
+  string v = String.trim_all_whites(e->value);
+
+  if (!sizeof(v) || SCALAR_IS_QUOTED(e)) {
+    return UNDEFINED;
+  }
+
+  string lcv = lower_case(v);
+
+  if (lcv == ".inf") {
+    return Math.inf;
+  }
+
+  if (lcv == ".nan") {
+    return Math.nan;
+  }
+
+  string prefix;
+
+  if (lcv[0] == '+' || lcv[0] == '-') {
+    prefix = lcv[0..0];
+    lcv = lcv[1..];
+  }
+
+  multiset int_range = (< '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' >);
+
+  if (!int_range[lcv[0]] && lcv[0] != '.') {
+    return UNDEFINED;
+  }
+
+  string sentinel = lcv + "\0\0";
+  int len = sizeof(lcv);
+  int alphas = 0;
+  int dots = 0;
+  int lodash = 0;
+  int prev;
+
+
+  for (int i; i < len; i++) {
+    int c = lcv[i];
+
+    if (c == '.') {
+      dots += 1;
+      // Can't be a numeric value
+      if (dots > 1) {
+        return UNDEFINED;
+      }
+    }
+    else if (c == '_') {
+      if (zero_type(prev) || !int_range[prev]) {
+        return UNDEFINED;
+      }
+
+      lodash += 1;
+    }
+    else if (c == 'e') {
+      if (!dots || (sentinel[i+1] != '+' && !int_range[sentinel[i+2]])) {
+        return UNDEFINED;
+      }
+      i += 2;
+      c = lcv[i];
+    }
+    else if (!int_range[c]) {
+      alphas += 1;
+    }
+
+    prev = c;
+  }
+
+  if (!alphas) {
+    if (lodash) {
+      lcv -= "_";
+    }
+
+    if (prefix) {
+      lcv = prefix + lcv;
+    }
+
+    if (dots) {
+      return (float) lcv;
+    }
+    else {
+      return (int) lcv;
+    }
+  }
+
+  return UNDEFINED;
+}
+
 
 //! Yaml parser class
 class YParser {
   inherit _Parser;
-}
 
-// //! Yaml scanner class
-// class Scanner {
-//   inherit Base;
-// }
+  private EventData next_event;
+  private int next_event_type;
+
+  int parse()
+  {
+    if (next_event_type) {
+      int t = next_event_type;
+      next_event_type = 0;
+      return t;
+    }
+
+    // No one bothered using it
+    if (next_event) {
+      next_event = 0;
+    }
+
+    return ::parse();
+  }
+
+  EventData get_event()
+  {
+    if (next_event) {
+      EventData t = copy_value(next_event);
+      next_event = 0;
+      return t;
+    }
+
+    EventData e = ::get_event();
+    convert_scalar_type(e);
+    return e;
+  }
+
+  EventData peek_event()
+  {
+    next_event_type = ::parse();
+    next_event = ::get_event();
+    convert_scalar_type(next_event);
+    return next_event;
+  }
+
+  mixed deconstruct()
+  {
+    EventData e;
+    mixed curr;
+    // mixed ret;
+    // int end_type;
+
+    while (int t = parse()) {
+      switch (t)
+      {
+        case DOCUMENT_START_EVENT:
+          // werror(">>> start document: %O\n", peek_event());
+          break;
+
+        case DOCUMENT_END_EVENT:
+          // werror("<<< end document\n");
+          break;
+
+        case SEQUENCE_START_EVENT:
+          curr = ({});
+          break;
+
+        case SEQUENCE_END_EVENT:
+          werror("Current: %O\n", curr);
+          break;
+
+        case MAPPING_START_EVENT:
+          curr = ([]);
+          break;
+
+        case MAPPING_END_EVENT:
+          werror("Current: %O\n", curr);
+          break;
+
+        case SCALAR_EVENT:
+          e = get_event();
+
+          if (arrayp(curr)) {
+            curr += ({ e->value });
+          }
+          else if (mappingp(curr)) {
+            EventData n = peek_event();
+            parse();
+            curr[e->value] = n->value;
+          }
+          // werror("data: %O\n", get_event()->value);
+          break;
+
+        default:
+
+          break;
+      }
+    }
+  }
+}
+// encoding
+constant ENCODING_TO_STR = ([
+  ANY_ENCODING : "ANY_ENCODING",
+  UTF16BE_ENCODING : "UTF16BE_ENCODING",
+  UTF16LE_ENCODING : "UTF16LE_ENCODING",
+  UTF8_ENCODING : "UTF8_ENCODING",
+]);
+
+// break
+constant BREAK_TO_STR = ([
+  ANY_BREAK : "ANY_BREAK",
+  CRLN_BREAK : "CRLN_BREAK",
+  CR_BREAK : "CR_BREAK",
+  LN_BREAK : "LN_BREAK",
+]);
+
+// error_type
+constant ERROR_TYPE_TO_STR = ([
+  COMPOSER_ERROR : "COMPOSER_ERROR",
+  EMITTER_ERROR : "EMITTER_ERROR",
+  MEMORY_ERROR : "MEMORY_ERROR",
+  NO_ERROR : "NO_ERROR",
+  PARSER_ERROR : "PARSER_ERROR",
+  READER_ERROR : "READER_ERROR",
+  SCANNER_ERROR : "SCANNER_ERROR",
+  WRITER_ERROR : "WRITER_ERROR",
+]);
+
+// scalar_style
+constant SCALAR_STYLE_TO_STR = ([
+  ANY_SCALAR_STYLE : "ANY_SCALAR_STYLE",
+  DOUBLE_QUOTED_SCALAR_STYLE : "DOUBLE_QUOTED_SCALAR_STYLE",
+  FOLDED_SCALAR_STYLE : "FOLDED_SCALAR_STYLE",
+  LITERAL_SCALAR_STYLE : "LITERAL_SCALAR_STYLE",
+  PLAIN_SCALAR_STYLE : "PLAIN_SCALAR_STYLE",
+  SINGLE_QUOTED_SCALAR_STYLE : "SINGLE_QUOTED_SCALAR_STYLE",
+]);
+
+// sequence_style
+constant SEQUENCE_STYLE_TO_STR = ([
+  ANY_SEQUENCE_STYLE : "ANY_SEQUENCE_STYLE",
+  BLOCK_SEQUENCE_STYLE : "BLOCK_SEQUENCE_STYLE",
+  FLOW_SEQUENCE_STYLE : "FLOW_SEQUENCE_STYLE",
+]);
+
+// mapping_style
+constant MAPPING_STYLE_TO_STR = ([
+  ANY_MAPPING_STYLE : "ANY_MAPPING_STYLE",
+  BLOCK_MAPPING_STYLE : "BLOCK_MAPPING_STYLE",
+  FLOW_MAPPING_STYLE : "FLOW_MAPPING_STYLE",
+]);
+
+// token_type
+constant TOKEN_TYPE_TO_STR = ([
+  ALIAS_TOKEN : "ALIAS_TOKEN",
+  ANCHOR_TOKEN : "ANCHOR_TOKEN",
+  BLOCK_END_TOKEN : "BLOCK_END_TOKEN",
+  BLOCK_ENTRY_TOKEN : "BLOCK_ENTRY_TOKEN",
+  BLOCK_MAPPING_START_TOKEN : "BLOCK_MAPPING_START_TOKEN",
+  BLOCK_SEQUENCE_START_TOKEN : "BLOCK_SEQUENCE_START_TOKEN",
+  DOCUMENT_END_TOKEN : "DOCUMENT_END_TOKEN",
+  DOCUMENT_START_TOKEN : "DOCUMENT_START_TOKEN",
+  FLOW_ENTRY_TOKEN : "FLOW_ENTRY_TOKEN",
+  FLOW_MAPPING_END_TOKEN : "FLOW_MAPPING_END_TOKEN",
+  FLOW_MAPPING_START_TOKEN : "FLOW_MAPPING_START_TOKEN",
+  FLOW_SEQUENCE_END_TOKEN : "FLOW_SEQUENCE_END_TOKEN",
+  FLOW_SEQUENCE_START_TOKEN : "FLOW_SEQUENCE_START_TOKEN",
+  KEY_TOKEN : "KEY_TOKEN",
+  NO_TOKEN : "NO_TOKEN",
+  SCALAR_TOKEN : "SCALAR_TOKEN",
+  STREAM_END_TOKEN : "STREAM_END_TOKEN",
+  STREAM_START_TOKEN : "STREAM_START_TOKEN",
+  TAG_DIRECTIVE_TOKEN : "TAG_DIRECTIVE_TOKEN",
+  TAG_TOKEN : "TAG_TOKEN",
+  VALUE_TOKEN : "VALUE_TOKEN",
+  VERSION_DIRECTIVE_TOKEN : "VERSION_DIRECTIVE_TOKEN",
+]);
+
+// event_type
+constant EVENT_TYPE_TO_STR = ([
+  ALIAS_EVENT : "ALIAS_EVENT",
+  DOCUMENT_END_EVENT : "DOCUMENT_END_EVENT",
+  DOCUMENT_START_EVENT : "DOCUMENT_START_EVENT",
+  MAPPING_END_EVENT : "MAPPING_END_EVENT",
+  MAPPING_START_EVENT : "MAPPING_START_EVENT",
+  NO_EVENT : "NO_EVENT",
+  SCALAR_EVENT : "SCALAR_EVENT",
+  SEQUENCE_END_EVENT : "SEQUENCE_END_EVENT",
+  SEQUENCE_START_EVENT : "SEQUENCE_START_EVENT",
+  STREAM_END_EVENT : "STREAM_END_EVENT",
+  STREAM_START_EVENT : "STREAM_START_EVENT",
+]);
+
+// node_type
+constant NODE_TYPE_TO_STR = ([
+  MAPPING_NODE : "MAPPING_NODE",
+  NO_NODE : "NO_NODE",
+  SCALAR_NODE : "SCALAR_NODE",
+  SEQUENCE_NODE : "SEQUENCE_NODE",
+]);
+
+// parser_state
+constant PARSER_STATE_TO_STR = ([
+  PARSE_BLOCK_MAPPING_FIRST_KEY_STATE : "PARSE_BLOCK_MAPPING_FIRST_KEY_STATE",
+  PARSE_BLOCK_MAPPING_KEY_STATE : "PARSE_BLOCK_MAPPING_KEY_STATE",
+  PARSE_BLOCK_MAPPING_VALUE_STATE : "PARSE_BLOCK_MAPPING_VALUE_STATE",
+  PARSE_BLOCK_NODE_OR_INDENTLESS_SEQUENCE_STATE : "PARSE_BLOCK_NODE_OR_INDENTLESS_SEQUENCE_STATE",
+  PARSE_BLOCK_NODE_STATE : "PARSE_BLOCK_NODE_STATE",
+  PARSE_BLOCK_SEQUENCE_ENTRY_STATE : "PARSE_BLOCK_SEQUENCE_ENTRY_STATE",
+  PARSE_BLOCK_SEQUENCE_FIRST_ENTRY_STATE : "PARSE_BLOCK_SEQUENCE_FIRST_ENTRY_STATE",
+  PARSE_DOCUMENT_CONTENT_STATE : "PARSE_DOCUMENT_CONTENT_STATE",
+  PARSE_DOCUMENT_END_STATE : "PARSE_DOCUMENT_END_STATE",
+  PARSE_DOCUMENT_START_STATE : "PARSE_DOCUMENT_START_STATE",
+  PARSE_END_STATE : "PARSE_END_STATE",
+  PARSE_FLOW_MAPPING_EMPTY_VALUE_STATE : "PARSE_FLOW_MAPPING_EMPTY_VALUE_STATE",
+  PARSE_FLOW_MAPPING_FIRST_KEY_STATE : "PARSE_FLOW_MAPPING_FIRST_KEY_STATE",
+  PARSE_FLOW_MAPPING_KEY_STATE : "PARSE_FLOW_MAPPING_KEY_STATE",
+  PARSE_FLOW_MAPPING_VALUE_STATE : "PARSE_FLOW_MAPPING_VALUE_STATE",
+  PARSE_FLOW_NODE_STATE : "PARSE_FLOW_NODE_STATE",
+  PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_END_STATE : "PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_END_STATE",
+  PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_KEY_STATE : "PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_KEY_STATE",
+  PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_VALUE_STATE : "PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_VALUE_STATE",
+  PARSE_FLOW_SEQUENCE_ENTRY_STATE : "PARSE_FLOW_SEQUENCE_ENTRY_STATE",
+  PARSE_FLOW_SEQUENCE_FIRST_ENTRY_STATE : "PARSE_FLOW_SEQUENCE_FIRST_ENTRY_STATE",
+  PARSE_IMPLICIT_DOCUMENT_START_STATE : "PARSE_IMPLICIT_DOCUMENT_START_STATE",
+  PARSE_INDENTLESS_SEQUENCE_ENTRY_STATE : "PARSE_INDENTLESS_SEQUENCE_ENTRY_STATE",
+  PARSE_STREAM_START_STATE : "PARSE_STREAM_START_STATE",
+]);
+
+// emitter_state
+constant EMITTER_STATE_TO_STR = ([
+  EMIT_BLOCK_MAPPING_FIRST_KEY_STATE : "EMIT_BLOCK_MAPPING_FIRST_KEY_STATE",
+  EMIT_BLOCK_MAPPING_KEY_STATE : "EMIT_BLOCK_MAPPING_KEY_STATE",
+  EMIT_BLOCK_MAPPING_SIMPLE_VALUE_STATE : "EMIT_BLOCK_MAPPING_SIMPLE_VALUE_STATE",
+  EMIT_BLOCK_MAPPING_VALUE_STATE : "EMIT_BLOCK_MAPPING_VALUE_STATE",
+  EMIT_BLOCK_SEQUENCE_FIRST_ITEM_STATE : "EMIT_BLOCK_SEQUENCE_FIRST_ITEM_STATE",
+  EMIT_BLOCK_SEQUENCE_ITEM_STATE : "EMIT_BLOCK_SEQUENCE_ITEM_STATE",
+  EMIT_DOCUMENT_CONTENT_STATE : "EMIT_DOCUMENT_CONTENT_STATE",
+  EMIT_DOCUMENT_END_STATE : "EMIT_DOCUMENT_END_STATE",
+  EMIT_DOCUMENT_START_STATE : "EMIT_DOCUMENT_START_STATE",
+  EMIT_END_STATE : "EMIT_END_STATE",
+  EMIT_FIRST_DOCUMENT_START_STATE : "EMIT_FIRST_DOCUMENT_START_STATE",
+  EMIT_FLOW_MAPPING_FIRST_KEY_STATE : "EMIT_FLOW_MAPPING_FIRST_KEY_STATE",
+  EMIT_FLOW_MAPPING_KEY_STATE : "EMIT_FLOW_MAPPING_KEY_STATE",
+  EMIT_FLOW_MAPPING_SIMPLE_VALUE_STATE : "EMIT_FLOW_MAPPING_SIMPLE_VALUE_STATE",
+  EMIT_FLOW_MAPPING_VALUE_STATE : "EMIT_FLOW_MAPPING_VALUE_STATE",
+  EMIT_FLOW_SEQUENCE_FIRST_ITEM_STATE : "EMIT_FLOW_SEQUENCE_FIRST_ITEM_STATE",
+  EMIT_FLOW_SEQUENCE_ITEM_STATE : "EMIT_FLOW_SEQUENCE_ITEM_STATE",
+  EMIT_STREAM_START_STATE : "EMIT_STREAM_START_STATE",
+]);

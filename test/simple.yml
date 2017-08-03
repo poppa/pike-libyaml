@@ -6,12 +6,29 @@
 
 # Sequence of scalars
 ---
-- Mark McGwire
-- Sammy Sosa
+- 'Mark McGwire'
+- "Sammy Sosa"
 - Ken Griffey
 
-# Mapping scalars to scalars
+# # Mapping scalars to scalars
 ---
-hr:  65    # Home runs
-avg: 0.278 # Batting average
-rbi: 147   # Runs Batted In
+hr:      65    # Home runs
+hrn:     -65    # Home runs
+avg:     0.278 # Batting average
+avg2:    .345e+1
+version: 5.2.1
+test:    Yes
+add:     1_000_230
+isoff:   n
+isNull:  ~
+isinf:   .inf
+isnan:   .nan
+str: |
+  Dude look like a lady.
+  And that's the way it is
+
+# ---
+# - 6
+# - 5.1
+# - 5.3
+# - 5.2.1
