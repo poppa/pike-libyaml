@@ -18,10 +18,10 @@ application specific tag: !something |
 
 int main(int argc, array(string) argv)
 {
-  Parser.Yaml.Parser p = Parser.Yaml.Parser();
+  Parser.YAML.Parser p = Parser.YAML.Parser();
   p->set_input_string(yml);
   p->add_tag_callback("!something",
-    lambda (Parser.Yaml.EventData e) {
+    lambda (Parser.YAML.EventData e) {
       werror("Got callback for !something\n");
       return reverse(e->value);
     });

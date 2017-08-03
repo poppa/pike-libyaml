@@ -11,7 +11,7 @@ This module requires `libyaml` to compile. When/if that's installed just run
 ## Usage
 
 ```pike
-mixed data = Parser.Yaml.decode_file("path/to/file.yml");
+mixed data = Parser.YAML.decode_file("path/to/file.yml");
 ```
 
 Or
@@ -27,7 +27,7 @@ string yml = #"
       - Rust
     ";
 
-mapping data = Parser.Yaml.decode(yml);
+mapping data = Parser.YAML.decode(yml);
 
 ([ /* 4 elements */
   "age": 42,
@@ -38,6 +38,27 @@ mapping data = Parser.Yaml.decode(yml);
     }),
   "name": "John Doe",
   "retired": Val.false
+])
+```
+
+You can also add tag callbacks for application (or generic) tags.
+
+```pike
+string yml = #"
+  key: !to-upper |
+    This string will be converted
+    to upper case.
+  ";
+
+mapping data = Parser.YAML.decode(yml, ([
+  "!to-upper" : lambda (Parser.YAML.EventData e) {
+    return upper_case(e->value);
+  }
+]));  
+
+([ /* 1 element */
+  "key": "THIS STRING WILL BE CONVERTED\n"
+    "TO UPPER CASE"
 ])
 ```
 

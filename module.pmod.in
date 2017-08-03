@@ -1,4 +1,4 @@
-/* Parser.Yaml
+/* Parser.YAML
  *
  * Copyright (C) 2017 Pontus Östlund
  *
@@ -38,14 +38,25 @@ typedef mapping(string:mixed) EventData;
 //! This is the same as:
 //!
 //! @code
-//! Parser.Yaml.Parser p = Parser.Yaml.Parser();
+//! Parser.YAML.Parser p = Parser.YAML.Parser();
 //! p->set_input_string(my_yaml_data);
 //! mixed res = p->deconstruct();
 //! @endcode
-public mixed decode(string(8bit) input)
+//!
+//! @param input
+//! @param cb
+//!  A mapping of tag callbacks where the index is a tag and the value the
+//!  the function to call when the tag is found.
+//!  See @[Parser.add_tag_callback()]
+public mixed decode(string(8bit) input, void|mapping(string:function) cb)
 {
   Parser p = Parser();
   p->set_input_string(input);
+
+  if (cb) {
+    p->set_tag_callbacks(cb);
+  }
+
   return p->deconstruct();
 }
 
@@ -55,19 +66,30 @@ public mixed decode(string(8bit) input)
 //! This is the same as:
 //!
 //! @code
-//! Parser.Yaml.Parser p = Parser.Yaml.Parser();
+//! Parser.YAML.Parser p = Parser.YAML.Parser();
 //! p->set_input_file(my_yaml_file);
 //! mixed res = p->deconstruct();
 //! @endcode
-public mixed decode_file(string(8bit) file)
+//!
+//! @param file
+//! @param cb
+//!  A mapping of tag callbacks where the index is a tag and the value the
+//!  the function to call when the tag is found.
+//!  See @[Parser.add_tag_callback()]
+public mixed decode_file(string(8bit) file, void|mapping(string:function) cb)
 {
   Parser p = Parser();
   p->set_input_file(file);
+
+  if (cb) {
+    p->set_tag_callbacks(cb);
+  }
+
   return p->deconstruct();
 }
 
 
-//! Yaml parser class
+//! YAML parser class
 class Parser {
   inherit _Parser;
 
@@ -76,7 +98,46 @@ class Parser {
   private mapping anchors = ([]);
   private mapping(string:function) tag_callbacks = ([]);
 
-  public void add_tag_callback(string tag, function f)
+  //! Add a tag callback
+  //!
+  //! If @[tag] is set in a scalar value then function @[f] will be called
+  //! with the @[EventData] as argument. If @[f] returns @[UNDEFINED] then
+  //! the function call will be skipped and the default conversion, if such
+  //! exist, will take place. If anything other than @[UNDEFINED] is returned
+  //! that will be set as the scalar value.
+  //!
+  //! If @[f] is falsy the callback will be removed if it exist.
+  //!
+  //! @seealso
+  //!  @[set_tag_callbacks()]
+  //!
+  //! @example
+  //! @code
+  //! import Parser.YAML;
+  //!
+  //! string yml = #"
+  //!   my-data: !to-upper |
+  //!     Some application specific
+  //!     string that will be converted
+  //!     to upper case...
+  //!   ";
+  //!
+  //! Parser p = Parser();
+  //! p->set_input_string(yml);
+  //! p->add_tag_callback("!to-upper",
+  //!   lambda (EventData e) {
+  //!     return upper_case(e->value);
+  //!   });
+  //!
+  //! mapping res = p->deconstruct();
+  //!
+  //! ([ /* 1 element */
+  //!   "my-data": "SOME APPLICATION SPECIFIC\n"
+  //!     "STRING THAT WILL BE CONVERTED\n"
+  //!     "TO UPPER CASE...\n"
+  //! ])
+  //! @endcode
+  public void add_tag_callback(string tag, function(EventData : mixed) f)
   {
     if (f) {
       tag_callbacks[tag] = f;
@@ -86,6 +147,12 @@ class Parser {
     }
   }
 
+  //! Set all tag callbacks in one go.
+  //!
+  //! @seealso
+  //!  @[add_tag_callback()]
+  //!
+  //! @param callbacks
   public void set_tag_callbacks(mapping(string:function) callbacks)
   {
     tag_callbacks = callbacks;
@@ -110,7 +177,7 @@ class Parser {
   //! @code
   //! EVENT_TYPE_TO_STR[return_value_from_parse]
   //! @endcode
-  int parse()
+  public int parse()
   {
     if (next_event_type) {
       int t = next_event_type;
@@ -135,7 +202,7 @@ class Parser {
   //! @returns
   //!  A mapping of some sort. It has different members depending on what type
   //!  of event it is.
-  EventData get_event()
+  public EventData get_event()
   {
     if (next_event) {
       EventData t = copy_value(next_event);
@@ -152,7 +219,7 @@ class Parser {
   //! of a call to this function will be cached and returned from the next call
   //! to @[parse()]. So beware that multiple consecutive calls to this method
   //! will move the cursor beyond what @[parse()] or @[get_event()] will return.
-  EventData peek_event()
+  public EventData peek_event()
   {
     next_event_type = ::parse();
     next_event = ::get_event();
@@ -164,7 +231,7 @@ class Parser {
   //!
   //! @seealso
   //!  @[decode()], @[decode_file()]
-  mixed deconstruct()
+  public mixed deconstruct()
   {
     EventData e, n;
     mixed out;

@@ -1,10 +1,10 @@
 /*
   This script parses yaml.h for enums and creates stubs for the corresponding
-  Pike constants in Yaml.cmod.
+  Pike constants in YAML.cmod.
 
     pike make-enums.pike > yaml_enums.tmp
 
-  Then copy the content into Yaml.cmod
+  Then copy the content into YAML.cmod
 */
 
 constant YAML_H = "/usr/include/yaml.h";

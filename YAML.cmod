@@ -1,4 +1,4 @@
-/* Parser.Yaml
+/* Parser.YAML
  *
  * Copyright (C) 2017  Pontus Östlund
  *
@@ -54,7 +54,7 @@ DECLARATIONS
 
 /*! @module Parser
 */
-/*! @module Yaml
+/*! @module YAML
  *!
  *! YAML parser and decoder module.
  *!
@@ -62,7 +62,7 @@ DECLARATIONS
  *!
  *! @example
  *! @code
- *! mixed data = Parser.Yaml.decode_file("path/to/file.yml");
+ *! mixed data = Parser.YAML.decode_file("path/to/file.yml");
  *! @endcode
  *!
  *! @example
@@ -77,7 +77,7 @@ DECLARATIONS
  *!     - Rust
  *!  ";
  *!
- *! mapping res = Parser.Yaml.decode(yml);
+ *! mapping res = Parser.YAML.decode(yml);
  *!
  *! >>> ([ // 3 elements
  *!   "age": 42,
@@ -163,9 +163,11 @@ PIKEFUN mapping(string:int) get_version ()
 
 
 /*! @class _Base
- *! @appears Parser.Yaml._Base
+ *! @appears Parser.YAML._Base
  *!
- *! Base class both the emitter and parser are inheriting
+ *! Low level base parser/scanner class.
+ *!
+ *! You don't want to use this directly. See @[Parser()] instead.
  */
 PIKECLASS _Base
   flags ID_PROTECTED;
@@ -251,16 +253,19 @@ PIKECLASS _Base
 
 
 /*! @class _Parser
- *! @appears Parser.Yaml._Parser
- *! @inherit Parser.Yaml._Base
+ *! @appears Parser.YAML._Parser
+ *! @inherit Parser.YAML._Base
  *!
- *! Main parser class
+ *! Low level parser class.
+ *!
+ *! Unless you explicitly want to use this class you should take a look at
+ *! @[Parser()] instead.
 */
 PIKECLASS _Parser
   flags ID_PROTECTED;
   program_flags PROGRAM_USES_PARENT;
 {
-  INHERIT Yaml_cq__Base;
+  INHERIT YAML_cq__Base;
 
   DECLARE_STORAGE;
 
@@ -356,6 +361,8 @@ PIKECLASS _Parser
   }
 
   /*! @decl EventData get_event()
+   *!
+   *! You should probably look at @[Parser.get_event()]
    *!
    *! @seealso
    *!  @[parse()]

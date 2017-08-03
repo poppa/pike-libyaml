@@ -65,7 +65,7 @@ modlist_segment
 module.pmod
 module.so
 propagated_variables
-Yaml.c
+YAML.c
 plib/
 refdoc/
 _build/
