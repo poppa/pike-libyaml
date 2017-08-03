@@ -118,8 +118,8 @@ public string describe_event(EventData|int e)
 class Parser {
   inherit _Parser;
 
-  private EventData next_event;
-  private int next_event_type;
+  private ADT.Queue parse_queue = ADT.Queue();
+  private ADT.Queue event_queue = ADT.Queue();
   private mapping anchors = ([]);
   private mapping(string:function) tag_callbacks = ([]);
 
@@ -201,15 +201,14 @@ class Parser {
   //!  mapping.
   public int parse()
   {
-    if (next_event_type) {
-      int t = next_event_type;
-      next_event_type = 0;
-      return t;
-    }
+    if (sizeof(parse_queue)) {
+      int t = parse_queue->get();
 
-    // No one bothered using it
-    if (next_event) {
-      next_event = 0;
+      if (sizeof(event_queue)) {
+        event_queue->get();
+      }
+
+      return t;
     }
 
     return ::parse();
@@ -226,10 +225,9 @@ class Parser {
   //!  of event it is.
   public EventData get_event()
   {
-    if (next_event) {
-      EventData t = copy_value(next_event);
-      next_event = 0;
-      return t;
+    if (sizeof(event_queue)) {
+      parse_queue->get();
+      return event_queue->get();
     }
 
     EventData e = ::get_event();
@@ -244,10 +242,11 @@ class Parser {
   //! will move the cursor beyond what @[parse()] or @[get_event()] will return.
   public EventData peek_event()
   {
-    next_event_type = ::parse();
-    next_event = ::get_event();
-    convert_scalar_type(next_event);
-    return next_event;
+    parse_queue->put(::parse());
+    EventData d = ::get_event();
+    convert_scalar_type(d);
+    event_queue->put(d);
+    return d;
   }
 
   private bool is_deconstructed = false;
