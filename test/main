@@ -4,46 +4,7 @@ import Parser.Yaml;
 
 int main(int argc, array(string) argv)
 {
-  werror("Enter test program\n");
-  // write("Yaml version string: %s\n", get_version_string());
-  // write("Yaml version mapping: %O\n", get_version());
-
-  // werror("type: %O\n", EVENT_TYPE_TO_STR[2]); exit(0);
-
-  // YParser p = YParser();
-  // p->set_input_string("lol:");
-  // p->set_input_file(combine_path(__DIR__, "simple.yml"));
-  // p->set_input_file(combine_path(__DIR__, "public.yml"));
-
-  // mixed res = p->deconstruct();
-
-  mixed res = decode_file(combine_path(__DIR__, "test1.yml"));
+  mixed res = decode_file(combine_path(__DIR__, "large.yml"));
 
   werror("Got: %O\n", res);
-
-  // int r;
-  // while (r = p->parse()) {
-  //   EventData e = p->get_event();
-  //   // werror("Res: %O\n", e);
-  // }
-
-
-
-  // Parser p = Parser();
-
-  // write("\nThis is \"%O %s\" by \"%s\"\n\n",
-  //       Parser.Yaml.module, __version, __author);
-
-  // foreach (sort(indices(Parser.Yaml)), string k) {
-  //   if (has_value(k, "_EVENT") && !mappingp(Parser.Yaml[k])) {
-  //     write( "  * %s : %O\n", k, Parser.Yaml[k]);
-  //   }
-  //   else if (has_value(k, "_STYLE") && !mappingp(Parser.Yaml[k])) {
-  //     write( "  - %s : %O\n", k, Parser.Yaml[k]);
-  //   }
-  // }
-
-  // destruct(p);
-
-  werror("End test program\n");
 }

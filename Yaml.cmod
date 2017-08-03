@@ -31,7 +31,7 @@
 
 DECLARATIONS
 
-#define YAML_DEBUG
+// #define YAML_DEBUG
 
 #ifdef YAML_DEBUG
 // FIXME: Fix this...
