@@ -51,6 +51,9 @@ typedef mapping(string:mixed) TokenData;
 //! mixed res = p->deconstruct();
 //! @endcode
 //!
+//! @seealso
+//!  @[Parser.deconstruct()]
+//!
 //! @param input
 //! @param cb
 //!  A mapping of tag callbacks where the index is a tag and the value the
@@ -78,6 +81,9 @@ public mixed decode(string(8bit) input, void|mapping(string:function) cb)
 //! p->set_input_file(my_yaml_file);
 //! mixed res = p->deconstruct();
 //! @endcode
+//!
+//! @seealso
+//!  @[Parser.deconstruct()]
 //!
 //! @param file
 //! @param cb
@@ -113,14 +119,29 @@ public string describe_event(EventData|int e)
 }
 
 
+//! Returns the string representation of the token type in @[t] wich can
+//! either be a token from @[Scanner.get_token()] or the result from
+//! @[Scanner.scan()].
+//!
+//! This is the same as
+//!
+//! @code
+//! Parser.YAML.TOKEN_TYPE_TO_STR[token_type]
+//! @endcode
 public string describe_token(TokenData|int t)
 {
   int c = mappingp(t) ? t->type : t;
   return TOKEN_TYPE_TO_STR[c];
 }
 
+
 //! YAML parser class
-class Parser {
+//!
+//! In principle you don't need to use this class explicitly unless you want to
+//! do some special parsing of your own. In most common use cases @[decode()]
+//! or @[decode_file()] will be sufficient.
+class Parser
+{
   inherit _Parser;
 
   private ADT.Queue parse_queue = ADT.Queue();
@@ -258,6 +279,10 @@ class Parser {
 
   //! Converts the entire document into a Pike data structure.
   //!
+  //! @note
+  //!  If the YAML stream being parsed contains multiple YAML documents an
+  //!  array will be returned with each doucument per array index.
+  //!
   //! @seealso
   //!  @[decode()], @[decode_file()]
   public mixed deconstruct()
@@ -277,8 +302,6 @@ class Parser {
       switch (t)
       {
         case DOCUMENT_END_EVENT:
-          // EventData tmp = peek_event();
-
           if (!out) {
             out = copy_value(curr);
           }
@@ -442,6 +465,13 @@ class Parser {
 
     return out;
   }
+
+  protected void maybe_add_default_anchor(EventData e)
+  {
+    if (e->anchor) {
+      anchors[e->anchor] = e->value;
+    }
+  }
   //! @ignore
 
 
@@ -465,6 +495,7 @@ class Parser {
       if (function f = tag_callbacks[e->tag]) {
         if (!zero_type(val = f(e))) {
           e->value = val;
+          maybe_add_default_anchor(e);
           return;
         }
       }
@@ -510,9 +541,7 @@ class Parser {
       e->value = val;
     }
 
-    if (e->anchor) {
-      anchors[e->anchor] = e->value;
-    }
+    maybe_add_default_anchor(e);
   }
 
   protected mixed scalar_is_date(EventData e)
