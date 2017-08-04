@@ -25,6 +25,9 @@ inherit @module@;
 //! @decl typedef mapping(string:mixed) EventData
 typedef mapping(string:mixed) EventData;
 
+//! @decl typedef mapping(string:mixed) TokenData
+typedef mapping(string:mixed) TokenData;
+
 #define SCALAR_TAG_IS(event, what) (event->tag == what)
 
 #define IS_NOT_IMPLICIT(event)                     \
@@ -113,6 +116,12 @@ public string describe_event(EventData|int e)
   return EVENT_TYPE_TO_STR[c];
 }
 
+
+public string describe_token(TokenData|int t)
+{
+  int c = mappingp(t) ? t->type : t;
+  return TOKEN_TYPE_TO_STR[c];
+}
 
 //! YAML parser class
 class Parser {
@@ -269,11 +278,10 @@ class Parser {
     is_deconstructed = true;
 
     while (int t = parse()) {
-      // werror(">>> %s\n", EVENT_TYPE_TO_STR[t]);
       switch (t)
       {
         case DOCUMENT_END_EVENT:
-          EventData tmp = peek_event();
+          // EventData tmp = peek_event();
 
           if (!out) {
             out = copy_value(curr);
@@ -402,6 +410,8 @@ class Parser {
         e->value = deconstruct_sequence();
       }
       else {
+        // Dunno about this, but it makes no sense to have a property name
+        // { y: 12 } be converted to { Val.true: 12 }
         if (e->value == Val.true || e->value == Val.false) {
           e->value = e->_raw_value;
         }
@@ -446,8 +456,6 @@ class Parser {
   //! value if type conversion occurs.
   protected void convert_scalar_type(EventData e)
   {
-    // werror("e (%s): %O\n", EVENT_TYPE_TO_STR[e->type], e);
-
     if (e->type != SCALAR_EVENT) {
       return;
     }
@@ -709,6 +717,80 @@ class Parser {
   }
 
   //! @endignore
+}
+
+//! YAML scanner class
+//!
+//! The @[Scanner] is more low level/fine grained than the @[Parser]. For basic
+//! decoding you probably want to use the @[Parser]. The @[Scanner] does no
+//! type conversion on scalar types or anything fancy like that.
+//!
+//! @example
+//! @code
+//! import Parser.YAML;
+//!
+//! Scanner s = Scanner();
+//! s->set_input_file("data.yml");
+//!
+//! while (int t = s->scan()) {
+//!   if (t == SCALAR_TOKEN) {
+//!     write("Scalar value: %s\n", get_token()->value);
+//!   }
+//!   else if (t == FLOW_ENTRY_TOKEN) {
+//!     if (peek_token()->type == KEY_TOKEN) {
+//!       write("Start of array of mappings\n");
+//!     }
+//!   }
+//! }
+//! @endcode
+class Scanner
+{
+  inherit _Scanner;
+
+  private ADT.Queue scan_queue = ADT.Queue();
+  private ADT.Queue token_queue = ADT.Queue();
+
+  //! Scan to next position.
+  //!
+  //! @seealso
+  //!  @[get_token()], @[peek_token()]
+  //!
+  //! @returns
+  //!  @tt{0@} when done. Otherwise any of the @tt{*_TOKEN@} constants.
+  public int scan()
+  {
+    if (sizeof (scan_queue)) {
+      token_queue->get();
+      return scan_queue->get();
+    }
+
+    return ::scan();
+  }
+
+  //! Returns the current token
+  //!
+  //! @seealso
+  //!  @[peek_token()]
+  public TokenData get_token()
+  {
+    if (sizeof(token_queue)) {
+      scan_queue->get();
+      return token_queue->get();
+    }
+
+    return ::get_token();
+  }
+
+  //! Peek next token. This can be called multiple times since the peeked
+  //! tokens will get queued and returned in order on next call to
+  //! @[get_token()]. Each call to @[scan()] will consume the tokens in turn.
+  public TokenData peek_token()
+  {
+    scan_queue->put(::scan());
+    TokenData t = ::get_token();
+    token_queue->put(t);
+    return t;
+  }
 }
 
 

@@ -4,21 +4,21 @@ import Parser.YAML;
 
 int main(int argc, array(string) argv)
 {
-  // mixed res = decode_file(combine_path(__DIR__, "large.yml"));
-  string yml = #"
-    my-data: !to-upper |
-      Some application specific
-      string that will be converted
-      to upper case...
-    ";
+  mixed res = decode_file(combine_path(__DIR__, "large.yml"));
+  // string yml = #"
+  //   my-data: !to-upper |
+  //     Some application specific
+  //     string that will be converted
+  //     to upper case...
+  //   ";
 
-  Parser p = Parser();
-  p->set_input_string(yml);
-  p->add_tag_callback("!to-upper",
-    lambda (EventData e) {
-      return upper_case(e->value);
-    });
+  // Parser p = Parser();
+  // p->set_input_string(yml);
+  // p->add_tag_callback("!to-upper",
+  //   lambda (EventData e) {
+  //     return upper_case(e->value);
+  //   });
 
-  mapping res = p->deconstruct();
+  // mapping res = p->deconstruct();
   werror("Got: %O\n", res);
 }

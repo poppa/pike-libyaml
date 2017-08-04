@@ -23,8 +23,6 @@ int main(int argc, array(string) argv)
       werror("Next next: %O\n", describe_event(next));
       next = p->peek_event();
       werror("Next next next: %O\n", describe_event(next));
-      // p->parse();
-      // p->parse();
     }
   }
 

@@ -161,7 +161,6 @@ PIKEFUN mapping(string:int) get_version ()
   } while (0)
 
 
-
 /*! @class _Base
  *! @appears Parser.YAML._Base
  *!
@@ -177,6 +176,9 @@ PIKECLASS _Base
 
   // This is used in _Parser
   CVAR yaml_event_t event;
+
+  // This is used in _Scanner
+  CVAR yaml_token_t token;
 
   PIKEVAR string(8bit) input_str
     flags ID_PROTECTED;
@@ -233,6 +235,77 @@ PIKECLASS _Base
     yaml_parser_set_input_file (&THIS->parser, THIS->fh);
   }
 
+  /*! @decl mapping(string(8bit):int) get_start_mark()
+   *!
+   *! @seealso
+   *!  @[get_end_mark()]
+   *!
+   *! @returns
+   *!  @mapping
+   *!   @member int "index"
+   *!    Index of the current event in the input.
+   *!   @member int "line"
+   *!    Line of the current event in the input
+   *!   @member int "column"
+   *!    Column of the current event in the input
+   *!  @endmapping
+   */
+  PIKEFUN mapping(string(8bit):int) get_start_mark ()
+  {
+    if (THIS->event.type) {
+      push_constant_text ("index");  push_int (THIS->event.start_mark.index);
+      push_constant_text ("line");   push_int (THIS->event.start_mark.line);
+      push_constant_text ("column"); push_int (THIS->event.start_mark.column);
+      f_aggregate_mapping (6);
+      return;
+    }
+    else if (THIS->token.type) {
+      push_constant_text ("index");  push_int (THIS->token.start_mark.index);
+      push_constant_text ("line");   push_int (THIS->token.start_mark.line);
+      push_constant_text ("column"); push_int (THIS->token.start_mark.column);
+      f_aggregate_mapping (6);
+      return;
+    }
+
+    push_int (0);
+  }
+
+  /*! @decl mapping(string(8bit):int) get_end_mark()
+   *!
+   *! @seealso
+   *!  @[get_start_mark()]
+   *!
+   *! @returns
+   *!  @mapping
+   *!   @member int "index"
+   *!    Index of the current event in the input.
+   *!   @member int "line"
+   *!    Line of the current event in the input
+   *!   @member int "column"
+   *!    Column of the current event in the input
+   *!  @endmapping
+  */
+  PIKEFUN mapping(string(8bit):int) get_end_mark ()
+  {
+    if (THIS->event.type) {
+      push_constant_text ("index");  push_int (THIS->event.end_mark.index);
+      push_constant_text ("line");   push_int (THIS->event.end_mark.line);
+      push_constant_text ("column"); push_int (THIS->event.end_mark.column);
+      f_aggregate_mapping (6);
+      return;
+    }
+    else if (THIS->token.type) {
+      push_constant_text ("index");  push_int (THIS->token.end_mark.index);
+      push_constant_text ("line");   push_int (THIS->token.end_mark.line);
+      push_constant_text ("column"); push_int (THIS->token.end_mark.column);
+      f_aggregate_mapping (6);
+      return;
+    }
+
+    push_int (0);
+  }
+
+
   INIT {
     THIS->input_str = NULL;
     THIS->fh = NULL;
@@ -250,6 +323,14 @@ PIKECLASS _Base
   }
 }
 /*! @endclass */
+
+#define ENSURE_HAS_INPUT()                                                    \
+  do {                                                                        \
+    if (!THIS->input_str && !THIS->fh) {                                      \
+      YAML_ERR ("No input given to object. Set via \"set_input_file()\" "     \
+                "or \"set_input_string()\"\n");                               \
+    }                                                                         \
+  } while (0)
 
 
 /*! @class _Parser
@@ -281,16 +362,12 @@ PIKECLASS _Parser
    */
   PIKEFUN int parse ()
   {
+    ENSURE_HAS_INPUT ();
+
     yaml_event_t _event;
     yaml_event_delete (&THIS->event);
 
-    if (!THIS->input_str && !THIS->fh) {
-      YAML_ERR ("No input given to object. Set via \"set_input_file()\" "
-                "or \"set_input_string()\"\n");
-    }
-
     if (!yaml_parser_parse (&THIS->parser, &_event)) {
-      yaml_event_delete (&THIS->event);
       PARSER_ERROR (THIS->parser);
     }
 
@@ -301,64 +378,6 @@ PIKECLASS _Parser
 
 #define EVENT THIS->event
 #define DATA  THIS->event.data
-
-  /*! @decl mapping(string(8bit):int) get_start_mark()
-   *!
-   *! @seealso
-   *!  @[get_end_mark()]
-   *!
-   *! @returns
-   *!  @mapping
-   *!   @member int "index"
-   *!    Index of the current event in the input.
-   *!   @member int "line"
-   *!    Line of the current event in the input
-   *!   @member int "column"
-   *!    Column of the current event in the input
-   *!  @endmapping
-  */
-  PIKEFUN mapping(string(8bit):int) get_start_mark ()
-  {
-    if (EVENT.type) {
-      push_constant_text ("index");  push_int (EVENT.start_mark.index);
-      push_constant_text ("line");   push_int (EVENT.start_mark.line);
-      push_constant_text ("column"); push_int (EVENT.start_mark.column);
-
-      f_aggregate_mapping (6);
-      return;
-    }
-
-    push_int (0);
-  }
-
-  /*! @decl mapping(string(8bit):int) get_end_mark()
-   *!
-   *! @seealso
-   *!  @[get_start_mark()]
-   *!
-   *! @returns
-   *!  @mapping
-   *!   @member int "index"
-   *!    Index of the current event in the input.
-   *!   @member int "line"
-   *!    Line of the current event in the input
-   *!   @member int "column"
-   *!    Column of the current event in the input
-   *!  @endmapping
-  */
-  PIKEFUN mapping(string(8bit):int) get_end_mark ()
-  {
-    if (EVENT.type) {
-      push_constant_text ("index");  push_int (EVENT.end_mark.index);
-      push_constant_text ("line");   push_int (EVENT.end_mark.line);
-      push_constant_text ("column"); push_int (EVENT.end_mark.column);
-
-      f_aggregate_mapping (6);
-      return;
-    }
-
-    push_int (0);
-  }
 
   /*! @decl EventData get_event()
    *!
@@ -472,6 +491,147 @@ PIKECLASS _Parser
     yaml_event_delete (&THIS->event);
   }
 }
+/*! @endclass */
+
+#undef EVENT
+#define EVENT THIS->token
+#undef DATA
+#define DATA THIS->token.data
+
+/*! @class _Scanner
+ *! @appears Parser.YAML._Scanner
+ *! @inherit Parser.YAML._Base
+ *!
+ *! Low level scanner class. Unless you explicitly want to use this class you
+ *! probably want to use @[Scanner] instead.
+ */
+PIKECLASS _Scanner
+  flags ID_PROTECTED;
+  program_flags PROGRAM_USES_PARENT;
+{
+  INHERIT YAML_cq__Base;
+
+  DECLARE_STORAGE;
+
+  /*! @decl int scan()
+   *!
+   *! Scan the next token. To get the current token call @[get_token()]
+   *!
+   *! @seealso
+   *!  @[get_token()]
+   */
+  PIKEFUN int scan()
+  {
+    ENSURE_HAS_INPUT();
+
+    yaml_token_delete (&THIS->token);
+
+    if (!yaml_parser_scan (&THIS->parser, &THIS->token)) {
+      PARSER_ERROR (THIS->parser);
+    }
+
+    TRACE ("<<< scan()\n");
+
+    RETURN (THIS->token.type);
+  }
+
+  /*! @decl mapping get_token()
+   *!
+   *! Get the current token
+   */
+  PIKEFUN mapping get_token ()
+  {
+    push_constant_text ("type"); push_int (EVENT.type);
+
+    switch (EVENT.type)
+    {
+      case YAML_STREAM_START_TOKEN:
+        push_constant_text ("encoding"); push_int (DATA.stream_start.encoding);
+        f_aggregate_mapping (4);
+        break;
+
+      case YAML_TAG_DIRECTIVE_TOKEN:
+        push_constant_text ("handle");
+          P_TEXT ((const char *) DATA.tag_directive.handle);
+        push_constant_text ("prefix");
+          P_TEXT ((const char *) DATA.tag_directive.prefix);
+
+        f_aggregate_mapping (6);
+        break;
+
+      case YAML_TAG_TOKEN:
+        push_constant_text ("handle");
+          P_TEXT ((const char *) DATA.tag.handle);
+        push_constant_text ("suffix");
+          P_TEXT ((const char *) DATA.tag.suffix);
+
+        f_aggregate_mapping (6);
+        break;
+
+      case YAML_SCALAR_TOKEN:
+        push_constant_text ("value");
+          P_TEXT ((const char *) DATA.scalar.value);
+        push_constant_text ("length"); push_int (DATA.scalar.length);
+        push_constant_text ("style");  push_int (DATA.scalar.style);
+
+        f_aggregate_mapping (8);
+        break;
+
+      case YAML_ANCHOR_TOKEN:
+        push_constant_text ("value");
+          P_TEXT ((const char *) DATA.anchor.value);
+
+        f_aggregate_mapping (4);
+        break;
+
+      case YAML_ALIAS_TOKEN:
+        push_constant_text ("value");
+          P_TEXT ((const char *) DATA.alias.value);
+
+        f_aggregate_mapping (4);
+        break;
+
+      case YAML_VERSION_DIRECTIVE_TOKEN:
+        push_constant_text ("major"); push_int (DATA.version_directive.major);
+        push_constant_text ("minor"); push_int (DATA.version_directive.minor);
+        f_aggregate_mapping (6);
+        break;
+
+      // These tokens hold no other value than type (and start/end mark, but
+      // those can be retreived via get_start_mark()/get_end_mark())
+      case YAML_FLOW_ENTRY_TOKEN:
+      case YAML_VALUE_TOKEN:
+      case YAML_BLOCK_ENTRY_TOKEN:
+      case YAML_DOCUMENT_START_TOKEN:
+      case YAML_BLOCK_SEQUENCE_START_TOKEN:
+      case YAML_FLOW_SEQUENCE_START_TOKEN:
+      case YAML_BLOCK_MAPPING_START_TOKEN:
+      case YAML_FLOW_MAPPING_START_TOKEN:
+      case YAML_KEY_TOKEN:
+      case YAML_FLOW_MAPPING_END_TOKEN:
+      case YAML_FLOW_SEQUENCE_END_TOKEN:
+      case YAML_BLOCK_END_TOKEN:
+      case YAML_STREAM_END_TOKEN:
+      case YAML_DOCUMENT_END_TOKEN:
+        f_aggregate_mapping (2);
+        break;
+
+      default:
+        YAML_ERR ("Unknown Token type %d\n", EVENT.type);
+        break;
+    }
+  }
+
+  INIT {
+    memset (&THIS->token,  0, sizeof (THIS->token));
+  }
+
+  EXIT {
+    yaml_token_delete (&THIS->token);
+  }
+
+}
+
 /*! @endclass */
 
 PIKE_MODULE_INIT
