@@ -13,7 +13,7 @@
 inherit @module@;
 //! @endignore
 
-#define YAML_DEBUG
+// #define YAML_DEBUG
 
 #ifdef YAML_DEBUG
 # define TRACE(X...)werror("%s:%d: %s",basename(__FILE__),__LINE__,sprintf(X))
