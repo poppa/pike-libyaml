@@ -494,6 +494,9 @@ class Parser {
     else if (IS_NOT_IMPLICIT_AND_TAG_IS(e, BINARY_TAG)) {
       e->value = MIME.decode_base64(e->value);
     }
+    else if (IS_NOT_IMPLICIT_AND_TAG_IS(e, PIKE_TAG)) {
+      e->value = decode_value(MIME.decode_base64(e->value));
+    }
     else if (!zero_type(val = scalar_is_null(e))) {
       e->value = val;
     }

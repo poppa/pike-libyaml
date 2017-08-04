@@ -5,14 +5,22 @@
     pike make-enums.pike > yaml_enums.tmp
 
   Then copy the content into YAML.cmod
+
+  This also generates the lookup mappings for the constants to string
+  conversion. These are mostly useful for dev/debug purposes.
 */
 
 constant YAML_H = "/usr/include/yaml.h";
 
+// Extra tags
 mapping fallback_tags = ([
   "BINARY_TAG" :
     Tag("BINARY_TAG", "/** The tag !!binary for base64 encoded binary data."
-                      " Pike special */", "tag:yaml.org,2002:binary")
+                      " Pike special */", "tag:yaml.org,2002:binary"),
+  "PIKE_TAG" :
+    Tag("PIKE_TAG", "/** The tag !!pike for base64 encoded pike encoded value "
+                    " via encode_value(). "
+                    " Pike special */", "tag:yaml.org,2002:pike")
 ]);
 
 int main(int argc, array(string) argv)

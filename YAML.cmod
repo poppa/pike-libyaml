@@ -990,6 +990,11 @@ PIKE_MODULE_INIT
    */
   add_string_constant ("DEFAULT_MAPPING_TAG", YAML_DEFAULT_MAPPING_TAG, 0);
 
+  /*! @decl constant PIKE_TAG
+   *! The tag !!pike for base64 encoded pike encoded value via encode_value().  Pike special
+   */
+  add_string_constant ("PIKE_TAG", "tag:yaml.org,2002:pike", 0);
+
   /*! @decl constant BINARY_TAG
    *! The tag !!binary for base64 encoded binary data. Pike special
    */
